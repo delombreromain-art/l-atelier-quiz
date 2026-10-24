@@ -1,0 +1,24 @@
+:root {
+  color-scheme: dark;
+  --page: #10120f;
+  --panel: #191b17;
+  --panel-2: #20221d;
+  --panel-raised: #242620;
+  --line: #30312a;
+  --line-soft: #292a24;
+  --text: #eee9dd;
+  --muted: #918f83;
+  --soft: #b9b4a8;
+  --gold: #d5b86e;
+  --gold-dark: #947c43;
+  --green: #8f9b7a;
+  --red: #d28470;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; color: var(--text); background: var(--page); font-family: 'Segoe UI', Arial, sans-serif; }
+button, input, textarea, select { font: inherit; }
+button { color: inherit; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+::selection { background: #d5b86e55; color: #fff; }
