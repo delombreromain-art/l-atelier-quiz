@@ -1,30 +1,41 @@
 export const FPS = 30;
-export const QUESTION_FRAMES = 12 * FPS;
+export const DEFAULT_QUESTION_SECONDS = 10;
+export const LONG_QUESTION_SECONDS = 15;
+export const LONG_QUESTION_CHARACTER_LIMIT = 150;
 export const ANSWER_FRAMES = 4 * FPS;
-export const TRANSITION_FRAMES = FPS;
+export const ANSWER_COMMENTARY_GAP_FRAMES = FPS;
+export const TRANSITION_FRAMES = 2 * FPS;
 export const THEME_FRAMES = 4 * FPS;
+export const INTRODUCTION_FRAMES = 25 * FPS;
+export const INTRODUCTION_QUESTION_GAP_FRAMES = 2 * FPS;
 export const MAX_QUESTIONS = 60;
 
-export type VoiceId = "fr_FR-siwis-medium" | "fr_FR-upmc-medium";
+export type VoiceId = "fr_FR-siwis-medium" | "fr_FR-upmc-medium" | "fr_FR-tom-medium" | "fr_FR-mls-medium";
 
 export type QuizQuestion = {
   id: string;
   title: string;
   prompt: string;
   answer: string;
+  answerCommentary: string;
   image: string | null;
+  answerImage: string | null;
   themeImage: string | null;
   startsTheme: boolean;
   themeTitle: string;
   keepImageOnAnswer: boolean;
   questionAudio: string | null;
   answerAudio: string | null;
+  commentaryAudio: string | null;
   questionAudioVoice: VoiceId | null;
   answerAudioVoice: VoiceId | null;
+  commentaryAudioVoice: VoiceId | null;
   questionAudioRate: number | null;
   answerAudioRate: number | null;
+  commentaryAudioRate: number | null;
   questionAudioDuration: number | null;
   answerAudioDuration: number | null;
+  commentaryAudioDuration: number | null;
 };
 
 export type QuizProject = {
@@ -58,20 +69,92 @@ export const makeQuestion = (number: number): QuizQuestion => ({
   title: "",
   prompt: "",
   answer: "",
+  answerCommentary: "",
   image: null,
+  answerImage: null,
   themeImage: null,
   startsTheme: false,
   themeTitle: "",
   keepImageOnAnswer: true,
   questionAudio: null,
   answerAudio: null,
+  commentaryAudio: null,
   questionAudioVoice: null,
   answerAudioVoice: null,
   questionAudioRate: null,
   answerAudioRate: null,
+  commentaryAudioVoice: null,
+  commentaryAudioRate: null,
   questionAudioDuration: null,
   answerAudioDuration: null,
+  commentaryAudioDuration: null,
 });
+
+export const parseQuizCsv = (source: string): QuizQuestion[] => {
+  const text = source.replace(/^\uFEFF/, "");
+  const headerLine = text.split(/\r\n|\n|\r/, 1)[0] ?? "";
+  const delimiter = headerLine.includes(";") ? ";" : ",";
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (quoted) {
+      if (character === '"' && text[index + 1] === '"') {
+        cell += '"';
+        index += 1;
+      } else if (character === '"') {
+        quoted = false;
+      } else {
+        cell += character;
+      }
+    } else if (character === '"') {
+      if (cell.length > 0) throw new Error("Guillemet inattendu dans le fichier CSV.");
+      quoted = true;
+    } else if (character === delimiter) {
+      row.push(cell);
+      cell = "";
+    } else if (character === "\n" || character === "\r") {
+      if (character === "\r" && text[index + 1] === "\n") index += 1;
+      row.push(cell);
+      if (row.some((value) => value.trim())) rows.push(row);
+      row = [];
+      cell = "";
+    } else {
+      cell += character;
+    }
+  }
+  if (quoted) throw new Error("Un champ entre guillemets n’est pas refermé.");
+  row.push(cell);
+  if (row.some((value) => value.trim())) rows.push(row);
+  if (rows.length < 2) throw new Error("Le fichier doit contenir une ligne d’en-têtes et au moins une question.");
+
+  const normalizeHeader = (header: string) => header.trim().toLocaleLowerCase("fr").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[ _-]+/g, "");
+  const headers = rows[0].map(normalizeHeader);
+  const questionColumn = headers.indexOf("question");
+  const answerColumn = headers.indexOf("reponse");
+  const titleColumn = headers.indexOf("titre");
+  const commentaryColumn = headers.indexOf("commentaire");
+  if (questionColumn < 0 || answerColumn < 0) throw new Error("Les colonnes obligatoires sont « question » et « reponse ». Consultez le format indiqué sous l’importeur.");
+
+  const dataRows = rows.slice(1);
+  if (dataRows.length > MAX_QUESTIONS) throw new Error(`Le fichier contient ${dataRows.length} lignes ; la limite est de ${MAX_QUESTIONS} questions.`);
+  return dataRows.map((values, index) => {
+    const read = (column: number) => column < 0 ? "" : (values[column] ?? "").trim();
+    const prompt = read(questionColumn);
+    const answer = read(answerColumn);
+    const title = read(titleColumn);
+    const answerCommentary = read(commentaryColumn);
+    const rowNumber = index + 2;
+    if (!prompt || !answer) throw new Error(`La ligne ${rowNumber} doit avoir une question et une réponse.`);
+    if (prompt.length > 1000 || answer.length > 500 || title.length > 100 || answerCommentary.length > 1000) {
+      throw new Error(`La ligne ${rowNumber} dépasse une limite : question 1 000, réponse 500, titre 100 ou commentaire 1 000 caractères.`);
+    }
+    return { ...makeQuestion(index + 1), title, prompt, answer, answerCommentary };
+  });
+};
 
 export const defaultProject: QuizProject = {
   title: "Mon premier quiz",
@@ -109,8 +192,17 @@ export const defaultProject: QuizProject = {
   ],
 };
 
-export const transitionFramesAfter = (questions: QuizQuestion[], index: number) =>
-  index < questions.length - 1 && questions[index + 1]?.startsTheme ? THEME_FRAMES : TRANSITION_FRAMES;
+export const questionDurationFrames = (question: QuizQuestion) => {
+  const visibleTextLength = question.title.length + question.prompt.length;
+  return (visibleTextLength > LONG_QUESTION_CHARACTER_LIMIT ? LONG_QUESTION_SECONDS : DEFAULT_QUESTION_SECONDS) * FPS;
+};
+
+export const answerNarrationFrames = (answerDuration: number | null, commentaryDuration: number | null) =>
+  Math.ceil((answerDuration ?? 0) * FPS) + ANSWER_COMMENTARY_GAP_FRAMES + Math.ceil((commentaryDuration ?? 0) * FPS);
+
+export const transitionFramesAfter = (questions: QuizQuestion[], index: number) => {
+  return index < questions.length - 1 ? TRANSITION_FRAMES : 0;
+};
 
 export const introductionSlides = (project: QuizProject) => [
   project.themeImage,
@@ -118,25 +210,21 @@ export const introductionSlides = (project: QuizProject) => [
   ...project.introductionImages,
 ].filter((image): image is string => Boolean(image));
 
-export const introductionDurationFrames = (project: QuizProject) => Math.max(
-  THEME_FRAMES,
-  Math.ceil((project.introductionAudioDuration ?? 0) * FPS),
-  introductionSlides(project).length * THEME_FRAMES,
-);
+export const introductionDurationFrames = (_project: QuizProject) => INTRODUCTION_FRAMES;
 
-export const questionStartFrame = (questions: QuizQuestion[], index: number, introFrames = THEME_FRAMES) => {
-  let frame = introFrames;
+export const questionStartFrame = (questions: QuizQuestion[], index: number, introFrames = INTRODUCTION_FRAMES) => {
+  let frame = introFrames + INTRODUCTION_QUESTION_GAP_FRAMES;
   for (let previous = 0; previous < index; previous += 1) {
-    frame += QUESTION_FRAMES + ANSWER_FRAMES + transitionFramesAfter(questions, previous);
+    frame += questionDurationFrames(questions[previous]) + ANSWER_FRAMES + transitionFramesAfter(questions, previous);
   }
   return frame;
 };
 
-export const questionVideoDuration = (questions: QuizQuestion[], introFrames = THEME_FRAMES) =>
+export const questionVideoDuration = (questions: QuizQuestion[], introFrames = INTRODUCTION_FRAMES) =>
   questions.length === 0
-    ? FPS
+    ? introFrames + INTRODUCTION_QUESTION_GAP_FRAMES + FPS
     : introFrames + questions.reduce((duration, _question, index) =>
-      duration + QUESTION_FRAMES + ANSWER_FRAMES + (index < questions.length - 1 ? transitionFramesAfter(questions, index) : 0), 0);
+      duration + questionDurationFrames(_question) + ANSWER_FRAMES + transitionFramesAfter(questions, index), INTRODUCTION_QUESTION_GAP_FRAMES);
 
 export const slugify = (value: string) =>
   value
@@ -148,7 +236,7 @@ export const slugify = (value: string) =>
     .slice(0, 64) || "quiz";
 
 export const isVoiceId = (value: unknown): value is VoiceId =>
-  value === "fr_FR-siwis-medium" || value === "fr_FR-upmc-medium";
+  value === "fr_FR-siwis-medium" || value === "fr_FR-upmc-medium" || value === "fr_FR-tom-medium" || value === "fr_FR-mls-medium";
 
 export const normalizeProject = (input: unknown): QuizProject | null => {
   if (!input || typeof input !== "object") return null;
@@ -161,26 +249,32 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
     if (!item || typeof item !== "object") return null;
     const row = item as Partial<QuizQuestion>;
     if (typeof row.prompt !== "string" || typeof row.answer !== "string") return null;
-    if (row.prompt.length > 1000 || row.answer.length > 500 || (row.title?.length ?? 0) > 100) return null;
+    if (row.prompt.length > 1000 || row.answer.length > 500 || (row.title?.length ?? 0) > 100 || (row.answerCommentary?.length ?? 0) > 1000) return null;
     questions.push({
       ...makeQuestion(index + 1),
       id: typeof row.id === "string" ? row.id.slice(0, 80) : `question-${index + 1}`,
       title: typeof row.title === "string" ? row.title : "",
       prompt: row.prompt,
       answer: row.answer,
+      answerCommentary: typeof row.answerCommentary === "string" ? row.answerCommentary : "",
       image: typeof row.image === "string" ? row.image : null,
+      answerImage: typeof row.answerImage === "string" ? row.answerImage : null,
       themeImage: typeof row.themeImage === "string" ? row.themeImage : null,
       startsTheme: row.startsTheme === true,
       themeTitle: typeof row.themeTitle === "string" ? row.themeTitle.slice(0, 100) : "",
       keepImageOnAnswer: row.keepImageOnAnswer !== false,
       questionAudio: typeof row.questionAudio === "string" ? row.questionAudio : null,
       answerAudio: typeof row.answerAudio === "string" ? row.answerAudio : null,
+      commentaryAudio: typeof row.commentaryAudio === "string" ? row.commentaryAudio : null,
       questionAudioVoice: isVoiceId(row.questionAudioVoice) ? row.questionAudioVoice : null,
       answerAudioVoice: isVoiceId(row.answerAudioVoice) ? row.answerAudioVoice : null,
+      commentaryAudioVoice: isVoiceId(row.commentaryAudioVoice) ? row.commentaryAudioVoice : null,
       questionAudioRate: typeof row.questionAudioRate === "number" ? row.questionAudioRate : null,
       answerAudioRate: typeof row.answerAudioRate === "number" ? row.answerAudioRate : null,
+      commentaryAudioRate: typeof row.commentaryAudioRate === "number" ? row.commentaryAudioRate : null,
       questionAudioDuration: typeof row.questionAudioDuration === "number" ? row.questionAudioDuration : null,
       answerAudioDuration: typeof row.answerAudioDuration === "number" ? row.answerAudioDuration : null,
+      commentaryAudioDuration: typeof row.commentaryAudioDuration === "number" ? row.commentaryAudioDuration : null,
     });
   }
 

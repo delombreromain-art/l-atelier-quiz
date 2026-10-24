@@ -18,10 +18,10 @@ Ouvrez [http://localhost:3000](http://localhost:3000). Le projet de démonstrati
 
 - Prévisualisation Remotion en 1920 × 1080, 30 FPS.
 - La séquence d’introduction ouvre le quiz avant la première question. Chaque photo y apparaît seule en plein écran, avec un fondu et un léger zoom d’entrée et de sortie.
-- Chaque question dure 12 secondes et sa réponse 4 secondes. Le passage simple vers la suivante dure 1 seconde ; une nouvelle séquence de thème garde sa photo plein écran pendant 4 secondes. La dernière question n’ajoute pas de transition finale.
+- Chaque question dure 12 secondes et sa réponse 1 seconde. Le passage vers la question suivante dure 1 seconde, y compris lors d’un changement de thème. La dernière question n’ajoute pas de transition finale.
 - Le quiz accepte de 1 à 60 questions. Chaque question ajoutée garde le même cycle, et le thème plein écran de 4 secondes ouvre le quiz.
 - Une introduction facultative accepte jusqu’à 1 000 caractères, lus avec la voix française sélectionnée. Les images du thème d’ouverture et des nouveaux thèmes sont présentées en plein écran ; des images supplémentaires peuvent être ajoutées. La séquence dure au moins 4 secondes et s’allonge selon la narration et le nombre d’images.
-- Un nouveau thème peut être activé sur une question : sa séquence photo de 4 secondes s’insère avant elle avec le même fondu et zoom. Le fond global et le logo restent identiques d’un thème à l’autre et reviennent après la photo plein écran. Les questions suivantes héritent du thème jusqu’au prochain changement ; sans changement, seule la séquence photo d’ouverture apparaît.
+- Un nouveau thème peut être activé sur une question : sa photo s’insère brièvement avant elle avec le même fondu et zoom. Le fond global et le logo restent identiques d’un thème à l’autre et reviennent après la photo plein écran. Les questions suivantes héritent du thème jusqu’au prochain changement ; sans changement, seule la séquence photo d’ouverture apparaît.
 - Import du fond global et du logo une seule fois, conservés pour toutes les questions et tous les thèmes. L’image d’illustration et le titre peuvent changer par thème ; le fond global ne change pas.
 - Musique de fond globale importée une seule fois, jouée en boucle pendant tout le quiz. Son volume est réglable dans « Décor & logo » et s’abaisse automatiquement pendant les voix, avec une remontée douce lors des transitions et silences. Formats acceptés : MP3, WAV, M4A, AAC, OGG et WebM.
 - Question et réponse apparaissent au même emplacement dans un cartouche sombre encadré d’or.

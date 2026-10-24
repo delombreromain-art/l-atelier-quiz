@@ -4,7 +4,7 @@ import path from "node:path";
 import { NextResponse } from "next/server";
 import { bundle } from "@remotion/bundler";
 import { renderMedia, selectComposition } from "@remotion/renderer";
-import { introductionDurationFrames, normalizeProject, questionVideoDuration, slugify, type QuizVideoProps } from "@/lib/quiz";
+import { answerNarrationFrames, introductionDurationFrames, normalizeProject, questionDurationFrames, questionVideoDuration, slugify, type QuizVideoProps } from "@/lib/quiz";
 import { renderJobs, type RenderJob } from "@/lib/render-jobs";
 import { ensureProjectFolders, saveProject, exportsDirectory } from "@/lib/storage";
 
@@ -118,14 +118,18 @@ export async function POST(request: Request) {
   )) {
     return NextResponse.json({ error: "Générez la narration de l’introduction avec la voix et la vitesse sélectionnées avant l’export." }, { status: 400 });
   }
+  if ((project.introductionAudioDuration ?? 0) > 25) {
+    return NextResponse.json({ error: "La narration d’introduction doit tenir dans les 25 secondes prévues." }, { status: 400 });
+  }
   const missingAudio = selected.some((question) =>
     !question.questionAudio || !question.answerAudio ||
     question.questionAudioVoice !== project.voice || question.answerAudioVoice !== project.voice ||
     question.questionAudioRate !== project.speechRate || question.answerAudioRate !== project.speechRate ||
-    (question.questionAudioDuration ?? 13) > 12 || (question.answerAudioDuration ?? 5) > 4
+    (question.questionAudioDuration ?? 16) > questionDurationFrames(question) / 30 || (question.answerAudioDuration ?? 5) > 4 ||
+    (question.answerCommentary.trim() && (!question.commentaryAudio || question.commentaryAudioVoice !== project.voice || question.commentaryAudioRate !== project.speechRate || answerNarrationFrames(question.answerAudioDuration, question.commentaryAudioDuration) > 4 * 30))
   );
   if (missingAudio) {
-    return NextResponse.json({ error: "Générez les voix manquantes avec la voix et la vitesse sélectionnées. Une question doit tenir en 12 s et sa réponse en 4 s." }, { status: 400 });
+    return NextResponse.json({ error: "Générez les voix manquantes avec la voix et la vitesse sélectionnées. La question doit tenir dans son compte à rebours et la réponse dans les 4 secondes d’affichage." }, { status: 400 });
   }
   if ([...renderJobs.values()].some((item) => item.stage === "preparing" || item.stage === "rendering" || item.stage === "queued")) {
     return NextResponse.json({ error: "Un rendu est déjà en cours." }, { status: 409 });

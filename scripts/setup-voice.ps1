@@ -17,16 +17,34 @@ $python = Join-Path $venvDir "Scripts\python.exe"
 & $uv.Source pip install --python $python "piper-tts==1.4.1"
 if ($LASTEXITCODE -ne 0) { throw "Installation de Piper échouée." }
 
-$baseUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/fr/fr_FR"
-foreach ($voice in @("siwis", "upmc")) {
+$baseUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/fr/fr_FR"
+$voices = @(
+  @{ Name = "siwis"; ModelBytes = 63201294; ConfigBytes = 4875 },
+  @{ Name = "upmc"; ModelBytes = 76733615; ConfigBytes = 4996 },
+  @{ Name = "tom"; ModelBytes = 63511038; ConfigBytes = 4959 },
+  @{ Name = "mls"; ModelBytes = 76733750; ConfigBytes = 7036 }
+)
+foreach ($voiceInfo in $voices) {
+  $voice = $voiceInfo.Name
   $name = "fr_FR-$voice-medium"
   foreach ($extension in @("onnx", "onnx.json")) {
     $destination = Join-Path $voiceDir "$name.$extension"
+    $expectedBytes = if ($extension -eq "onnx") { $voiceInfo.ModelBytes } else { $voiceInfo.ConfigBytes }
+    if ((Test-Path -LiteralPath $destination) -and (Get-Item -LiteralPath $destination).Length -ne $expectedBytes) {
+      Remove-Item -LiteralPath $destination -Force
+    }
     if (-not (Test-Path -LiteralPath $destination)) {
       $url = "$baseUrl/$voice/medium/$name.$extension`?download=true"
-      Invoke-WebRequest -Uri $url -OutFile $destination
+      $temporary = "$destination.download"
+      if ((Test-Path -LiteralPath $temporary) -and (Get-Item -LiteralPath $temporary).Length -gt $expectedBytes) {
+        Remove-Item -LiteralPath $temporary -Force
+      }
+      & curl.exe --fail --location --retry 5 --retry-all-errors --connect-timeout 20 --max-time 900 --continue-at - --output $temporary $url
+      if ($LASTEXITCODE -ne 0) { throw "Téléchargement de $name.$extension échoué." }
+      if ((Get-Item -LiteralPath $temporary).Length -ne $expectedBytes) { throw "Fichier incomplet pour $name.$extension ; relancez npm run setup:voice pour reprendre le téléchargement." }
+      Move-Item -LiteralPath $temporary -Destination $destination -Force
     }
   }
 }
 
-Write-Host "Piper et les voix françaises SIWIS/UPMC sont prêts dans $root"
+Write-Host "Piper et les voix françaises SIWIS/UPMC/TOM/MLS sont prêts dans $root"
