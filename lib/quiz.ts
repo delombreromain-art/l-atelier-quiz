@@ -18,6 +18,7 @@ export type QuizQuestion = {
   prompt: string;
   answer: string;
   answerCommentary: string;
+  force15Seconds: boolean;
   image: string | null;
   answerImage: string | null;
   themeImage: string | null;
@@ -70,6 +71,7 @@ export const makeQuestion = (number: number): QuizQuestion => ({
   prompt: "",
   answer: "",
   answerCommentary: "",
+  force15Seconds: false,
   image: null,
   answerImage: null,
   themeImage: null,
@@ -194,7 +196,7 @@ export const defaultProject: QuizProject = {
 
 export const questionDurationFrames = (question: QuizQuestion) => {
   const visibleTextLength = question.title.length + question.prompt.length;
-  return (visibleTextLength > LONG_QUESTION_CHARACTER_LIMIT ? LONG_QUESTION_SECONDS : DEFAULT_QUESTION_SECONDS) * FPS;
+  return (question.force15Seconds || visibleTextLength > LONG_QUESTION_CHARACTER_LIMIT ? LONG_QUESTION_SECONDS : DEFAULT_QUESTION_SECONDS) * FPS;
 };
 
 export const answerNarrationFrames = (answerDuration: number | null, commentaryDuration: number | null) =>
@@ -257,6 +259,7 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
       prompt: row.prompt,
       answer: row.answer,
       answerCommentary: typeof row.answerCommentary === "string" ? row.answerCommentary : "",
+      force15Seconds: row.force15Seconds === true,
       image: typeof row.image === "string" ? row.image : null,
       answerImage: typeof row.answerImage === "string" ? row.answerImage : null,
       themeImage: typeof row.themeImage === "string" ? row.themeImage : null,

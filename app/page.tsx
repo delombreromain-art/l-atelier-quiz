@@ -242,7 +242,9 @@ export default function Home() {
         await synthesizeIntroduction(); complete += 1;
       }
       for (let index = 0; index < project.questions.length; index += 1) {
-        for (const part of ["question", "answer", ...(project.questions[index].answerCommentary.trim() ? ["commentary" as const] : [])]) {
+        const parts: Array<"question" | "answer" | "commentary"> = ["question", "answer"];
+        if (project.questions[index].answerCommentary.trim()) parts.push("commentary");
+        for (const part of parts) {
           setVoiceProgress(`Voix ${complete + 1} sur ${total} · question ${index + 1}`);
           await generateVoice(index, part); complete += 1;
         }
@@ -364,6 +366,7 @@ export default function Home() {
                         <div className="question-card-top"><div className="number-badge">{String(index + 1).padStart(2, "0")}</div><div className="question-card-title"><strong>Question {index + 1}</strong><small>{questionSeconds} s + 4 s réponse{question.answerCommentary.trim() ? ` · commentaire lu pendant la réponse` : ""}{index < project.questions.length - 1 ? " + 2 s de pause" : ""}</small></div><button className={`preview-small ${previewQuestion === index ? "selected" : ""}`} onClick={() => { setPreviewQuestion(index); navigate("preview"); }} title={`Prévisualiser la question ${index + 1}`}><span>▶</span> Aperçu</button></div>
                         <label className="field-label">TITRE À L’ÉCRAN <span>FACULTATIF</span><input value={question.title} maxLength={100} placeholder={`Question ${index + 1}`} onChange={(event) => updateQuestion(index, { title: event.target.value })} /></label>
                         <label className="field-label">QUESTION <span>OBLIGATOIRE · {questionSeconds} SECONDES · {question.title.length + question.prompt.length} CARACTÈRES À L’ÉCRAN</span><textarea value={question.prompt} maxLength={1000} rows={2} placeholder="Écrivez la question à deviner…" onChange={(event) => updateQuestion(index, { prompt: event.target.value })} /></label>
+                        <label className="checkbox-line timer-override"><input type="checkbox" checked={question.force15Seconds} onChange={(event) => updateQuestion(index, { force15Seconds: event.target.checked })} /><span>Forcer le compte à rebours à 15 secondes · les questions de plus de 150 caractères restent automatiquement à 15 secondes</span></label>
                         <label className="field-label">RÉPONSE <span>OBLIGATOIRE · AFFICHÉE 4 SECONDES</span><textarea value={question.answer} maxLength={500} rows={2} placeholder="Écrivez la réponse à révéler…" onChange={(event) => updateQuestion(index, { answer: event.target.value })} /></label>
                         <label className="field-label">COMMENTAIRE PENDANT L’AFFICHAGE DE LA RÉPONSE <span>FACULTATIF · 1 S DE PAUSE AVANT SA LECTURE</span><textarea value={question.answerCommentary} maxLength={1000} rows={2} placeholder="Ajoutez une explication, une anecdote ou un commentaire…" onChange={(event) => updateQuestion(index, { answerCommentary: event.target.value, commentaryAudio: null, commentaryAudioDuration: null, commentaryAudioVoice: null, commentaryAudioRate: null })} /></label>
                         <div className="question-assets">
