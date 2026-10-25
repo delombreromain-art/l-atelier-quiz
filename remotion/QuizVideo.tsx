@@ -6,6 +6,7 @@ import {
   Sequence,
   staticFile,
   useCurrentFrame,
+  useVideoConfig,
 } from "remotion";
 import {
   ANSWER_FRAMES,
@@ -17,6 +18,7 @@ import {
   questionDurationFrames,
   transitionFramesAfter,
   type QuizQuestion,
+  type IntroductionLayers,
   type QuizVideoProps,
 } from "../lib/quiz";
 
@@ -109,13 +111,125 @@ const ThemeImageSequence: React.FC<{ image: string | null; frame: number; durati
   );
 };
 
-const IntroductionImage: React.FC<{ image: string; frame: number; duration: number }> = ({ image, frame, duration }) => {
-  const fadeInFrames = Math.max(1, Math.round(0.7 * FPS));
-  const fadeOutFrames = Math.min(Math.round(0.7 * FPS), Math.max(1, Math.round(duration * 0.05)));
-  const fadeIn = interpolate(frame, [0, fadeInFrames], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) });
-  const fadeOut = interpolate(frame, [duration - fadeOutFrames, duration], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) });
-  const zoom = interpolate(frame, [0, duration], [1, 1.03], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) });
-  return <div style={{ position: "absolute", zIndex: 4, inset: 0, overflow: "hidden", background: "#000", opacity: fadeOut }}><Img src={toPublicUrl(image)} style={{ display: "block", width: "100%", height: "100%", objectFit: "contain", opacity: fadeIn, transform: `scale(${zoom})` }} /></div>;
+const easeOut = Easing.out(Easing.quad);
+
+const IntroductionLayerImage: React.FC<{
+  image: string;
+  layer: IntroductionLayers[keyof IntroductionLayers];
+  startFrame: number;
+  enterFrames: number;
+  scaleFrom: number;
+  risePixels: number;
+  lightOnEntry?: boolean;
+  shineStartFrame?: number;
+  shineFrames?: number;
+}> = ({ image, layer, startFrame, enterFrames, scaleFrom, risePixels, lightOnEntry = false, shineStartFrame, shineFrames = 1 }) => {
+  const frame = useCurrentFrame();
+  const progress = interpolate(frame, [startFrame, startFrame + enterFrames], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: easeOut,
+  });
+  const scale = interpolate(progress, [0, 1], [scaleFrom, 1]);
+  const translateY = risePixels * (1 - progress);
+  const brightness = lightOnEntry
+    ? interpolate(progress, [0, 0.55, 1], [1, 1.045, 1])
+    : 1;
+  const shineProgress = shineStartFrame === undefined
+    ? 0
+    : interpolate(frame, [shineStartFrame, shineStartFrame + shineFrames], [0, 1], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: Easing.inOut(Easing.sin),
+    });
+  const shineOpacity = interpolate(shineProgress, [0, 0.25, 0.5, 0.75, 1], [0, 0.22, 0.32, 0.22, 0]);
+  const shinePosition = interpolate(shineProgress, [0, 1], [120, -20]);
+  const imageUrl = toPublicUrl(image);
+  return (
+    <div style={{
+      position: "absolute",
+      left: `${layer.x / 1920 * 100}%`,
+      top: `${layer.y / 1080 * 100}%`,
+      width: `${layer.width / 1920 * 100}%`,
+      zIndex: layer.zIndex,
+      opacity: progress,
+      transform: `translateY(${translateY}px) scale(${scale})`,
+      transformOrigin: "center center",
+      filter: `brightness(${brightness})`,
+      pointerEvents: "none",
+    }}>
+      <Img src={imageUrl} style={{ display: "block", width: "100%", height: "auto", objectFit: "contain" }} />
+      {shineOpacity > 0 && <div style={{
+        position: "absolute", inset: 0, opacity: shineOpacity, mixBlendMode: "screen", pointerEvents: "none",
+        backgroundImage: "linear-gradient(108deg, transparent 39%, rgba(255,236,177,0) 43%, rgba(255,240,190,.82) 49%, rgba(217,165,70,.42) 53%, transparent 60%)",
+        backgroundSize: "260% 100%", backgroundPosition: `${shinePosition}% center`,
+        maskImage: `url("${imageUrl}")`, WebkitMaskImage: `url("${imageUrl}")`,
+        maskMode: "alpha", maskRepeat: "no-repeat", WebkitMaskRepeat: "no-repeat",
+        maskSize: "100% 100%", WebkitMaskSize: "100% 100%",
+      }} />}
+    </div>
+  );
+};
+
+const IntroductionComposition: React.FC<{ background: string | null; layers: IntroductionLayers; durationFrames: number }> = ({ background, layers, durationFrames }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const timeScale = durationFrames / (20 * fps);
+  const frames = (seconds: number) => Math.max(1, Math.round(seconds * fps * timeScale));
+  const backgroundFadeFrames = frames(0.5);
+  const finalFadeFrames = frames(0.6);
+  const backgroundOpacity = interpolate(frame, [0, backgroundFadeFrames], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: Easing.inOut(Easing.sin),
+  });
+  const backgroundZoom = interpolate(frame, [0, durationFrames], [1, 1.02], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: Easing.inOut(Easing.sin),
+  });
+  const compositionOpacity = interpolate(frame, [durationFrames - finalFadeFrames, durationFrames], [1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: Easing.inOut(Easing.sin),
+  });
+  const layerAnimations: Partial<Record<keyof IntroductionLayers, { start: number; duration: number; scale: number; rise: number; light?: boolean; shine?: number }>> = {
+    logo: { start: 1, duration: 1.5, scale: 0.96, rise: 0, shine: 2.7 },
+    questionsPanel: { start: 8, duration: 1.5, scale: 0.94, rise: 15, shine: 9.8 },
+    history: { start: 10, duration: 1.2, scale: 0.92, rise: 10, light: true },
+    geography: { start: 10, duration: 1.2, scale: 0.92, rise: 10, light: true },
+    science: { start: 10, duration: 1.2, scale: 0.92, rise: 10, light: true },
+    cinema: { start: 10, duration: 1.2, scale: 0.92, rise: 10, light: true },
+    hourglass: { start: 14, duration: 1, scale: 0.96, rise: 0, light: true },
+  };
+
+  return (
+    <div style={{ position: "absolute", inset: 0, overflow: "hidden", opacity: compositionOpacity }}>
+      {background && <Img src={toPublicUrl(background)} style={{
+        position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain",
+        opacity: interpolate(backgroundOpacity, [0, 1], [0.8, 1]), transform: `scale(${backgroundZoom})`, transformOrigin: "center center",
+      }} />}
+      {(Object.entries(layers) as [keyof IntroductionLayers, IntroductionLayers[keyof IntroductionLayers]][])
+        .filter(([id, layer]) => Boolean(layer.image) && layer.visible && Boolean(layerAnimations[id]))
+        .sort(([, left], [, right]) => left.zIndex - right.zIndex)
+        .map(([id, layer]) => {
+          const animation = layerAnimations[id]!;
+          const stagger = id === "history" ? 0 : id === "geography" ? 0.7 : id === "science" ? 1.4 : id === "cinema" ? 2.1 : 0;
+          return <IntroductionLayerImage
+            key={id}
+            image={layer.image!}
+            layer={layer}
+            startFrame={frames(animation.start + stagger)}
+            enterFrames={frames(animation.duration)}
+            scaleFrom={animation.scale}
+            risePixels={animation.rise}
+            lightOnEntry={animation.light}
+            shineStartFrame={animation.shine === undefined ? undefined : frames(animation.shine)}
+            shineFrames={frames(1)}
+          />;
+        })}
+    </div>
+  );
 };
 
 const resolveTheme = (project: QuizVideoProps["project"], questionIndex: number) => {
@@ -163,6 +277,7 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
   const frame = useCurrentFrame();
   const introFrames = introductionDurationFrames(project);
   const isOpeningTheme = frame < introFrames;
+  const introFadeOutFrames = Math.max(1, Math.round(introFrames * 0.6 / 20));
   const questionsFrame = Math.max(0, frame - introFrames);
   const matchingIndex = questions.findIndex((_item, index) => questionsFrame < questionStartFrame(questions, index + 1, introFrames) - introFrames);
   const activeIndex = matchingIndex < 0 ? questions.length - 1 : matchingIndex;
@@ -186,7 +301,7 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
   if (!question) return null;
   return (
     <div style={{ width: 1920, height: 1080, overflow: "hidden", position: "relative", background: "#101b14", fontFamily: "Arial, sans-serif" }}>
-      {project.backgroundMusic && <Sequence from={introFrames} layout="none"><Audio src={toPublicUrl(project.backgroundMusic)} loop volume={project.musicVolume / 100} /></Sequence>}
+      {project.backgroundMusic && <Sequence from={0} layout="none"><Audio src={toPublicUrl(project.backgroundMusic)} loop volume={project.musicVolume / 100} /></Sequence>}
       {project.introductionAudio && <Sequence from={0} durationInFrames={Math.max(1, Math.ceil((project.introductionAudioDuration ?? 25) * FPS))} layout="none"><Audio src={toPublicUrl(project.introductionAudio)} volume={project.voiceVolume / 100} /></Sequence>}
       {questions.map((item, index) => (
         <Sequence key={`voice-question-${item.id}`} from={questionStartFrame(questions, index, introFrames)} durationInFrames={Math.max(1, Math.ceil((item.questionAudioDuration ?? 15) * FPS))} layout="none">
@@ -203,8 +318,12 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
           {item.commentaryAudio && item.commentaryAudioVoice === project.voice && item.commentaryAudioRate === project.speechRate ? <Audio src={toPublicUrl(item.commentaryAudio)} volume={project.voiceVolume / 100} /> : null}
         </Sequence>
       ))}
-      <Backdrop image={project.background} />
-      {isOpeningTheme && project.introductionImage && <IntroductionImage image={project.introductionImage} frame={frame} duration={introFrames} />}
+      {isOpeningTheme
+        ? <>
+          <Backdrop image={project.background} opacity={frame >= introFrames - introFadeOutFrames ? 1 : 0} />
+          <IntroductionComposition background={project.introductionImage || project.background} layers={project.introductionLayers} durationFrames={introFrames} />
+        </>
+        : <Backdrop image={project.background} />}
       {hasQuestionStarted && localFrame < questionFrames && <Illustration image={question.image} />}
       {hasQuestionStarted && localFrame >= questionFrames && localFrame < questionFrames + ANSWER_FRAMES && <Illustration image={question.answerImage || (question.keepImageOnAnswer ? question.image : null)} />}
       {hasQuestionStarted && localFrame < questionFrames + ANSWER_FRAMES && <QuestionAnswerCard question={question} number={questionNumber} frame={localFrame} questionFrames={questionFrames} />}

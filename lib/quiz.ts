@@ -14,6 +14,26 @@ export const INTRODUCTION_QUESTION_GAP_FRAMES = 2 * FPS;
 export const MAX_QUESTIONS = 60;
 
 export type VoiceId = "fr_FR-siwis-medium" | "fr_FR-upmc-medium" | "fr_FR-tom-medium" | "fr_FR-mls-medium";
+export type IntroductionLayerId = "logo" | "questionsPanel" | "history" | "geography" | "science" | "cinema" | "hourglass";
+export type IntroductionLayer = {
+  image: string | null;
+  x: number;
+  y: number;
+  width: number;
+  zIndex: number;
+  visible: boolean;
+};
+export type IntroductionLayers = Record<IntroductionLayerId, IntroductionLayer>;
+
+export const INTRODUCTION_LAYER_DEFAULTS: IntroductionLayers = {
+  logo: { image: null, x: 600, y: 24, width: 720, zIndex: 1, visible: true },
+  questionsPanel: { image: null, x: 440, y: 340, width: 1040, zIndex: 2, visible: true },
+  history: { image: null, x: 110, y: 750, width: 310, zIndex: 3, visible: true },
+  geography: { image: null, x: 475, y: 750, width: 310, zIndex: 4, visible: true },
+  science: { image: null, x: 840, y: 750, width: 310, zIndex: 5, visible: true },
+  cinema: { image: null, x: 1205, y: 750, width: 310, zIndex: 6, visible: true },
+  hourglass: { image: null, x: 1530, y: 370, width: 270, zIndex: 7, visible: true },
+};
 
 export type QuizQuestion = {
   id: string;
@@ -46,6 +66,7 @@ export type QuizProject = {
   title: string;
   introductionText: string;
   introductionImage: string | null;
+  introductionLayers: IntroductionLayers;
   introductionDurationSeconds: number;
   introductionAudio: string | null;
   introductionAudioDuration: number | null;
@@ -167,6 +188,7 @@ export const defaultProject: QuizProject = {
   title: "Mon premier quiz",
   introductionText: "",
   introductionImage: null,
+  introductionLayers: INTRODUCTION_LAYER_DEFAULTS,
   introductionDurationSeconds: DEFAULT_INTRODUCTION_SECONDS,
   introductionAudio: null,
   introductionAudioDuration: null,
@@ -289,10 +311,33 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
     });
   }
 
+  const layerInput = value.introductionLayers && typeof value.introductionLayers === "object"
+    ? value.introductionLayers as Partial<Record<IntroductionLayerId, Partial<IntroductionLayer>>>
+    : {};
+  const layerIds = Object.keys(INTRODUCTION_LAYER_DEFAULTS) as IntroductionLayerId[];
+  const introductionLayers = Object.fromEntries(layerIds.map((id) => {
+    const raw: Partial<IntroductionLayer> = layerInput[id] && typeof layerInput[id] === "object" ? layerInput[id] : {};
+    const defaults = INTRODUCTION_LAYER_DEFAULTS[id];
+    const width = typeof raw.width === "number" && Number.isFinite(raw.width)
+      ? Math.min(1920, Math.max(40, raw.width))
+      : defaults.width;
+    const x = typeof raw.x === "number" && Number.isFinite(raw.x) ? raw.x : defaults.x;
+    const y = typeof raw.y === "number" && Number.isFinite(raw.y) ? raw.y : defaults.y;
+    return [id, {
+      image: typeof raw.image === "string" ? raw.image : null,
+      x: Math.min(1920 - width, Math.max(0, x)),
+      y: Math.min(1080, Math.max(0, y)),
+      width,
+      zIndex: typeof raw.zIndex === "number" && Number.isFinite(raw.zIndex) ? Math.min(100, Math.max(1, raw.zIndex)) : defaults.zIndex,
+      visible: raw.visible !== false,
+    }];
+  })) as IntroductionLayers;
+
   return {
     title: typeof value.title === "string" ? value.title.slice(0, 120) : "Mon quiz",
     introductionText: typeof value.introductionText === "string" ? value.introductionText.slice(0, 1000) : "",
     introductionImage: typeof value.introductionImage === "string" ? value.introductionImage : null,
+    introductionLayers,
     introductionDurationSeconds: typeof value.introductionDurationSeconds === "number"
       ? Math.min(MAX_INTRODUCTION_SECONDS, Math.max(MIN_INTRODUCTION_SECONDS, value.introductionDurationSeconds))
       : DEFAULT_INTRODUCTION_SECONDS,

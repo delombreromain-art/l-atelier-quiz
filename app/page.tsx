@@ -19,10 +19,13 @@ import {
   questionVideoDuration,
   transitionFramesAfter,
   type QuizProject,
+  type IntroductionLayerId,
+  type IntroductionLayers,
   type QuizQuestion,
   type VoiceId,
 } from "@/lib/quiz";
 import { QuizVideo } from "@/remotion/QuizVideo";
+import { IntroductionEditor } from "./IntroductionEditor";
 import "./studio.css";
 
 type RenderStatus = {
@@ -167,6 +170,15 @@ export default function Home() {
     } catch (error) { setFeedback(error instanceof Error ? error.message : "Import impossible."); }
     finally { setMediaBusy(""); }
   }, []);
+
+  const uploadIntroductionLayer = (id: IntroductionLayerId, file: File) => {
+    void uploadImage(file, (image) => setProject((current) => ({
+      ...current,
+      introductionLayers: { ...current.introductionLayers, [id]: { ...current.introductionLayers[id], image } },
+    })), `introduction-layer-${id}`);
+  };
+
+  const updateIntroductionLayers = (introductionLayers: IntroductionLayers) => updateProject({ introductionLayers });
 
   const uploadMusic = useCallback(async (file: File) => {
     setMediaBusy("background-music"); setFeedback("");
@@ -336,13 +348,19 @@ export default function Home() {
           <div className="main-grid">
             <div className="editor-column">
               <section className="panel intro-panel" id="introduction">
-                <div className="panel-heading"><div><span className="panel-step">01</span><div><h2>Introduction de la vidéo</h2><p>L’image choisie occupe tout l’écran pendant la durée réglée.</p></div></div></div>
+                <div className="panel-heading"><div><span className="panel-step">01</span><div><h2>Introduction de la vidéo</h2><p>Composez le fond et les calques PNG transparents de l’introduction.</p></div></div></div>
                 <label className="field-label">TEXTE LU PAR LA VOIX OFF <span>FACULTATIF · 1 000 CARACTÈRES MAXIMUM</span><textarea value={project.introductionText} maxLength={1000} rows={4} placeholder="Bienvenue dans ce quiz… Présentez le thème et invitez les spectateurs à jouer." onChange={(event) => updateProject({ introductionText: event.target.value, introductionAudio: null, introductionAudioDuration: null, introductionAudioVoice: null, introductionAudioRate: null })} /></label>
                 <Slider label="Durée de l’introduction" value={project.introductionDurationSeconds} min={MIN_INTRODUCTION_SECONDS} max={MAX_INTRODUCTION_SECONDS} unit=" s" onChange={(introductionDurationSeconds) => updateProject({ introductionDurationSeconds })} />
-                <div className="intro-image-control">
-                  <div className="intro-image-preview">{project.introductionImage ? <Image src={assetUrl(project.introductionImage) || ""} alt="Aperçu de l’image d’introduction en plein écran" width={320} height={180} unoptimized /> : <span>IMAGE FACULTATIVE<br />PLEIN ÉCRAN</span>}</div>
-                  <div className="intro-image-actions"><strong>IMAGE D’ILLUSTRATION</strong><small>PNG, JPG ou WebP · plein écran avec zoom et fondu.</small><div><label className="upload-button">{mediaBusy === "introduction-image" ? "Import…" : project.introductionImage ? "Remplacer l’image" : "Ajouter une image"}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={Boolean(mediaBusy)} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(file, (introductionImage) => updateProject({ introductionImage }), "introduction-image"); event.currentTarget.value = ""; }} /></label>{project.introductionImage && <button className="text-button" onClick={() => updateProject({ introductionImage: null })}>Supprimer</button>}</div></div>
-                </div>
+                <IntroductionEditor
+                  background={project.introductionImage || project.background}
+                  backgroundIsFallback={!project.introductionImage && Boolean(project.background)}
+                  layers={project.introductionLayers}
+                  busy={mediaBusy}
+                  onUploadBackground={(file) => void uploadImage(file, (introductionImage) => updateProject({ introductionImage }), "introduction-image")}
+                  onRemoveBackground={() => updateProject({ introductionImage: null })}
+                  onUploadLayer={uploadIntroductionLayer}
+                  onUpdateLayers={updateIntroductionLayers}
+                />
                 <div className="intro-voice-row"><span className={introVoiceReady && project.introductionAudio ? "voice-done" : project.introductionText.trim() ? "voice-missing" : "voice-done"}>{project.introductionAudio && introVoiceReady ? `Voix prête · ${project.introductionAudioDuration?.toFixed(1)} s` : project.introductionText.trim() ? "Voix à générer" : "Ajoutez un texte pour créer la voix"}</span><button className="generate-one" disabled={voiceBusy || !project.introductionText.trim()} onClick={() => void generateIntroductionVoice()}>{voiceBusy ? "Génération…" : project.introductionAudio ? "Régénérer la voix" : "Générer la voix d’introduction"}</button></div>
                 {project.introductionAudio && <audio className="intro-audio-preview" controls preload="none" src={assetUrl(project.introductionAudio) || undefined} aria-label="Écouter la narration de l’introduction" />}
               </section>
