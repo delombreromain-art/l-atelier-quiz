@@ -84,10 +84,12 @@ export default function Home() {
   const [openNavGroup, setOpenNavGroup] = useState<"questions" | "musiques" | null>(null);
   const [mediaBusy, setMediaBusy] = useState("");
   const [countdownPreviewPlaying, setCountdownPreviewPlaying] = useState(false);
+  const [introductionMusicPreviewPlaying, setIntroductionMusicPreviewPlaying] = useState(false);
   const [conclusionMusicPreviewPlaying, setConclusionMusicPreviewPlaying] = useState(false);
   const [answerSoundPreviewPlaying, setAnswerSoundPreviewPlaying] = useState(false);
   const playerRef = useRef<PlayerRef>(null);
   const countdownAudioRef = useRef<HTMLAudioElement>(null);
+  const introductionMusicAudioRef = useRef<HTMLAudioElement>(null);
   const conclusionMusicAudioRef = useRef<HTMLAudioElement>(null);
   const answerSoundAudioRef = useRef<HTMLAudioElement>(null);
 
@@ -125,6 +127,10 @@ export default function Home() {
   }, [project.countdownSoundVolume]);
 
   useEffect(() => {
+    if (introductionMusicAudioRef.current) introductionMusicAudioRef.current.volume = project.introductionMusicVolume / 100;
+  }, [project.introductionMusicVolume]);
+
+  useEffect(() => {
     if (conclusionMusicAudioRef.current) conclusionMusicAudioRef.current.volume = project.conclusionMusicVolume / 100;
   }, [project.conclusionMusicVolume]);
 
@@ -145,6 +151,13 @@ export default function Home() {
     if (audio) audio.currentTime = 0;
     setConclusionMusicPreviewPlaying(false);
   }, [project.conclusionMusic]);
+
+  useEffect(() => {
+    const audio = introductionMusicAudioRef.current;
+    audio?.pause();
+    if (audio) audio.currentTime = 0;
+    setIntroductionMusicPreviewPlaying(false);
+  }, [project.introductionMusic]);
 
   useEffect(() => {
     const audio = answerSoundAudioRef.current;
@@ -281,6 +294,19 @@ export default function Home() {
     finally { setMediaBusy(""); }
   }, [updateProject]);
 
+  const uploadIntroductionMusic = useCallback(async (file: File) => {
+    setMediaBusy("introduction-music"); setFeedback("");
+    try {
+      const body = new FormData(); body.set("file", file);
+      const response = await fetch("/api/music", { method: "POST", body });
+      const result = await response.json() as { path?: string; error?: string };
+      if (!response.ok || !result.path) throw new Error(result.error || "Import de la musique d’introduction impossible.");
+      updateProject({ introductionMusic: result.path });
+      setFeedback(`${file.name} ajoutée pour l’introduction.`);
+    } catch (error) { setFeedback(error instanceof Error ? error.message : "Import de la musique d’introduction impossible."); }
+    finally { setMediaBusy(""); }
+  }, [updateProject]);
+
   const uploadAnswerSound = useCallback(async (file: File) => {
     setMediaBusy("answer-sound"); setFeedback("");
     try {
@@ -326,6 +352,21 @@ export default function Home() {
   const updateConclusionMusicVolume = (conclusionMusicVolume: number) => {
     if (conclusionMusicAudioRef.current) conclusionMusicAudioRef.current.volume = conclusionMusicVolume / 100;
     updateProject({ conclusionMusicVolume });
+  };
+
+  const previewIntroductionMusic = async () => {
+    const audio = introductionMusicAudioRef.current;
+    if (!audio) return;
+    if (!audio.paused) { audio.pause(); audio.currentTime = 0; return; }
+    audio.volume = project.introductionMusicVolume / 100;
+    audio.currentTime = 0;
+    try { await audio.play(); }
+    catch { setFeedback("La musique d’introduction n’a pas pu être lue."); }
+  };
+
+  const updateIntroductionMusicVolume = (introductionMusicVolume: number) => {
+    if (introductionMusicAudioRef.current) introductionMusicAudioRef.current.volume = introductionMusicVolume / 100;
+    updateProject({ introductionMusicVolume });
   };
 
   const previewAnswerSound = async () => {
@@ -488,7 +529,7 @@ export default function Home() {
   const previewConclusionFrames = previewQuestion === "all" ? conclusionDurationFrames(project) : 0;
   const previewDuration = questionVideoDuration(visibleQuestions, introductionDurationFrames(project), previewConclusionFrames, project.voice, project.speechRate);
   const voiceFilesCount = project.questions.reduce((total, question) => total + Number(Boolean(question.questionRecording || question.questionAudio)) + Number(Boolean(question.answerRecording || question.answerAudio)) + Number(Boolean(question.commentaryRecording || question.commentaryAudio)), Number(Boolean(project.introductionRecording || project.introductionAudio)) + Number(Boolean(project.conclusionRecording || project.conclusionAudio)));
-  const previewKey = `${previewQuestion === "all" ? "all" : `question-${previewQuestion}`}-${project.voiceVolume}-${project.countdownSound || "no-countdown-sound"}-${project.countdownSoundVolume}-${project.answerSound || "no-answer-sound"}-${project.answerSoundVolume}-${project.conclusionMusic || "theme-music"}-${project.conclusionMusicVolume}-${project.introductionRecording || ""}-${project.conclusionRecording || ""}-${project.questions.map((q) => `${q.questionRecording || ""}:${q.answerRecording || ""}:${q.commentaryRecording || ""}`).join("|")}`;
+  const previewKey = `${previewQuestion === "all" ? "all" : `question-${previewQuestion}`}-${project.voiceVolume}-${project.countdownSound || "no-countdown-sound"}-${project.countdownSoundVolume}-${project.answerSound || "no-answer-sound"}-${project.answerSoundVolume}-${project.introductionMusic || "no-intro-music"}-${project.introductionMusicVolume}-${project.conclusionMusic || "theme-music"}-${project.conclusionMusicVolume}-${project.introductionRecording || ""}-${project.conclusionRecording || ""}-${project.questions.map((q) => `${q.questionRecording || ""}:${q.answerRecording || ""}:${q.commentaryRecording || ""}`).join("|")}`;
   const questionRanges = Array.from({ length: Math.ceil(project.questions.length / 10) }, (_, index) => {
     const start = index * 10;
     return { start, end: Math.min(start + 10, project.questions.length) };
@@ -504,7 +545,7 @@ export default function Home() {
           <button className="side-nav-link" onClick={() => navigate("introduction")}><span>01</span> Introduction</button>
           <div className="side-nav-group">
             <button className="side-nav-link side-nav-group-trigger" aria-expanded={openNavGroup === "musiques"} onClick={() => setOpenNavGroup((current) => current === "musiques" ? null : "musiques")}><span>02</span> Musiques &amp; sons <i>{openNavGroup === "musiques" ? "−" : "+"}</i></button>
-            {openNavGroup === "musiques" && <div className="side-nav-submenu"><button onClick={() => navigate("musique-theme")}>Musique du thème</button><button onClick={() => navigate("son-compte-a-rebours")}>Son du compte à rebours</button><button onClick={() => navigate("son-reponses")}>Son des bonnes réponses</button><button onClick={() => navigate("musique-conclusion")}>Musique de conclusion</button></div>}
+            {openNavGroup === "musiques" && <div className="side-nav-submenu"><button onClick={() => navigate("musique-introduction")}>Musique d’introduction</button><button onClick={() => navigate("musique-theme")}>Musique du thème</button><button onClick={() => navigate("son-compte-a-rebours")}>Son du compte à rebours</button><button onClick={() => navigate("son-reponses")}>Son des bonnes réponses</button><button onClick={() => navigate("musique-conclusion")}>Musique de conclusion</button></div>}
           </div>
           <div className="side-nav-group">
             <button className="side-nav-link side-nav-group-trigger" aria-expanded={openNavGroup === "questions"} onClick={() => { setOpenNavGroup((current) => current === "questions" ? null : "questions"); navigate("questions"); }}><span>03</span> Questions <i>{openNavGroup === "questions" ? "−" : "+"}</i><small>{project.questions.length}</small></button>
@@ -568,6 +609,10 @@ export default function Home() {
                   onUploadLayer={uploadIntroductionLayer}
                   onUpdateLayers={updateIntroductionLayers}
                 />
+                <div className="music-field conclusion-music-field" id="musique-introduction">
+                  <div className="music-heading"><div><strong>MUSIQUE D’INTRODUCTION</strong><small>{project.introductionMusic ? "Cette piste remplace la musique du thème pendant l’introduction." : "Sans piste dédiée, la musique du thème joue dès le début."}</small></div><label className="upload-button">{mediaBusy === "introduction-music" ? "Import…" : project.introductionMusic ? "Remplacer la musique" : "Importer une musique"}<input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/wave,audio/x-wav,audio/mp4,audio/x-m4a,audio/aac,audio/ogg,audio/webm,.mp3,.wav,.m4a,.aac,.ogg,.webm" disabled={Boolean(mediaBusy)} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadIntroductionMusic(file); event.currentTarget.value = ""; }} /></label>{project.introductionMusic && <button className="text-button" onClick={() => updateProject({ introductionMusic: null })}>Retirer</button>}</div>
+                  {project.introductionMusic && <><div className="conclusion-music-preview-row"><button type="button" className="countdown-preview-button" onClick={() => void previewIntroductionMusic()}>{introductionMusicPreviewPlaying ? "■ Arrêter l’écoute" : "▶ Écouter la musique"}</button><span>Le niveau de l’aperçu suit cette jauge.</span><audio ref={introductionMusicAudioRef} className="countdown-audio-source" preload="metadata" src={assetUrl(project.introductionMusic) || undefined} onPlay={() => setIntroductionMusicPreviewPlaying(true)} onPause={() => setIntroductionMusicPreviewPlaying(false)} onEnded={() => setIntroductionMusicPreviewPlaying(false)} aria-label="Aperçu de la musique d’introduction" /></div><Slider label="Volume de la musique d’introduction" value={project.introductionMusicVolume} min={0} max={100} unit=" %" onChange={updateIntroductionMusicVolume} /></>}
+                </div>
                 <div className="intro-voice-row"><span className={introVoiceReady ? "voice-done" : project.introductionText.trim() ? "voice-missing" : "voice-done"}>{project.introductionVoiceSource === "recording" && project.introductionRecording ? `Micro sélectionné · ${project.introductionRecordingDuration?.toFixed(1)} s` : project.introductionAudio && introVoiceReady ? `Voix IA sélectionnée · ${project.introductionAudioDuration?.toFixed(1)} s` : project.introductionText.trim() ? "Choisissez IA ou Micro ci-dessous" : "Ajoutez un texte pour créer la voix"}</span><button className="generate-one" disabled={voiceBusy || !project.introductionText.trim()} onClick={() => void generateIntroductionVoice()}>{voiceBusy ? "Génération…" : project.introductionAudio ? "Régénérer la voix IA" : "Générer la voix IA"}</button></div>
                 {project.introductionAudio && <audio className="intro-audio-preview" controls preload="none" src={assetUrl(project.introductionAudio) || undefined} aria-label="Écouter la narration de l’introduction" />}
                 <VoiceRecorder label="Narration de l’introduction" path={project.introductionRecording} duration={project.introductionRecordingDuration} source={project.introductionVoiceSource} aiAvailable={Boolean(project.introductionAudio && project.introductionAudioVoice === project.voice && project.introductionAudioRate === project.speechRate)} onSourceChange={(introductionVoiceSource) => updateProject({ introductionVoiceSource })} busy={mediaBusy === "voice-recording"} onSave={(blob, duration) => saveRecording(blob, duration, (introductionRecording, introductionRecordingDuration) => updateProject({ introductionRecording, introductionRecordingDuration, introductionVoiceSource: "recording" }))} onDelete={() => updateProject({ introductionRecording: null, introductionRecordingDuration: null, introductionVoiceSource: "ai" })} />

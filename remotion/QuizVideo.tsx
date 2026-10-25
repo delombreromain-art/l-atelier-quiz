@@ -330,6 +330,7 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
   const conclusionLocalFrame = frame - conclusionStartFrame;
   const musicVolume = project.musicVolume / 100;
   const musicCrossfadeFrames = Math.max(1, Math.round(0.7 * fps));
+  const introductionMusicVolume = project.introductionMusicVolume / 100;
   const narrationIntervals = [
     ...(introductionNarration(project) ? [{ start: 0, end: Math.ceil(introductionNarration(project)!.duration * fps), musicDuck: project.introductionVoiceSource === "ai" }] : []),
     ...questions.flatMap((item, index) => {
@@ -358,9 +359,20 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
     return amount;
   };
   const duckedVolume = (absoluteFrame: number, volume: number, musicOnly = false) => volume * (1 - voiceDuckAt(absoluteFrame, musicOnly) * 0.82);
-  const themeMusicVolumeAt = (audioFrame: number) => !hasFullQuiz || !project.conclusionMusic
-    ? musicVolume
-    : interpolate(audioFrame, [conclusionStartFrame, conclusionStartFrame + musicCrossfadeFrames], [musicVolume, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) });
+  const themeMusicVolumeAt = (audioFrame: number) => {
+    const introductionCrossfade = project.introductionMusic
+      ? interpolate(audioFrame, [introFrames - musicCrossfadeFrames, introFrames], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) })
+      : 1;
+    const conclusionCrossfade = hasFullQuiz && project.conclusionMusic
+      ? interpolate(audioFrame, [conclusionStartFrame, conclusionStartFrame + musicCrossfadeFrames], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) })
+      : 1;
+    return musicVolume * introductionCrossfade * conclusionCrossfade;
+  };
+  const introductionMusicVolumeAt = (audioFrame: number) => {
+    const fadeIn = interpolate(audioFrame, [0, musicCrossfadeFrames], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) });
+    const fadeOut = interpolate(audioFrame, [introFrames - musicCrossfadeFrames, introFrames], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) });
+    return introductionMusicVolume * Math.min(fadeIn, fadeOut);
+  };
   const isOpeningTheme = frame < introFrames;
   const introFadeOutFrames = Math.max(1, Math.round(introFrames * 0.6 / 20));
   const questionsFrame = Math.max(0, frame - introFrames);
@@ -388,6 +400,7 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
   return (
     <div style={{ width: 1920, height: 1080, overflow: "hidden", position: "relative", background: "#101b14", fontFamily: "Arial, sans-serif" }}>
       {project.backgroundMusic && <Sequence from={0} layout="none"><Audio src={toPublicUrl(project.backgroundMusic)} loop volume={themeMusicVolumeAt} /></Sequence>}
+      {project.introductionMusic && <Sequence from={0} durationInFrames={introFrames} layout="none"><Audio src={toPublicUrl(project.introductionMusic)} loop volume={(audioFrame) => introductionMusicVolumeAt(audioFrame)} /></Sequence>}
       {hasFullQuiz && outroFrames > 0 && project.conclusionMusic && <Sequence from={conclusionStartFrame} durationInFrames={outroFrames} layout="none"><Audio src={toPublicUrl(project.conclusionMusic)} loop volume={(audioFrame) => interpolate(audioFrame, [0, musicCrossfadeFrames], [0, project.conclusionMusicVolume / 100], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) })} /></Sequence>}
       {introductionNarration(project) && <Sequence from={0} durationInFrames={Math.max(1, Math.ceil(introductionNarration(project)!.duration * fps))} layout="none"><Audio src={toPublicUrl(introductionNarration(project)!.path)} volume={project.voiceVolume / 100} /></Sequence>}
       {hasFullQuiz && conclusionNarration(project) && <Sequence from={conclusionStartFrame} durationInFrames={Math.max(1, Math.ceil(conclusionNarration(project)!.duration * fps))} layout="none"><Audio src={toPublicUrl(conclusionNarration(project)!.path)} volume={project.voiceVolume / 100} /></Sequence>}

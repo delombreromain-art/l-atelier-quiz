@@ -92,6 +92,8 @@ export type QuizProject = {
   introductionRecording: string | null;
   introductionRecordingDuration: number | null;
   introductionVoiceSource: VoiceSource;
+  introductionMusic: string | null;
+  introductionMusicVolume: number;
   conclusionText: string;
   conclusionBackgroundImage: string | null;
   conclusionMusic: string | null;
@@ -248,6 +250,8 @@ export const defaultProject: QuizProject = {
   introductionRecording: null,
   introductionRecordingDuration: null,
   introductionVoiceSource: "ai",
+  introductionMusic: null,
+  introductionMusicVolume: 35,
   conclusionText: "",
   conclusionBackgroundImage: null,
   conclusionMusic: null,
@@ -500,6 +504,10 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
     introductionRecording: typeof value.introductionRecording === "string" ? value.introductionRecording : null,
     introductionRecordingDuration: typeof value.introductionRecordingDuration === "number" ? Math.max(0, value.introductionRecordingDuration) : null,
     introductionVoiceSource: value.introductionVoiceSource === "recording" || (!value.introductionVoiceSource && value.introductionRecording) ? "recording" : "ai",
+    introductionMusic: typeof value.introductionMusic === "string" ? value.introductionMusic : null,
+    introductionMusicVolume: typeof value.introductionMusicVolume === "number"
+      ? Math.min(100, Math.max(0, value.introductionMusicVolume))
+      : defaultProject.introductionMusicVolume,
     conclusionText: typeof value.conclusionText === "string" ? value.conclusionText.slice(0, 1000) : "",
     conclusionBackgroundImage: typeof value.conclusionBackgroundImage === "string" ? value.conclusionBackgroundImage : null,
     conclusionMusic: typeof value.conclusionMusic === "string" ? value.conclusionMusic : null,
