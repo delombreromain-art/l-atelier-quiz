@@ -121,8 +121,8 @@ export default function Home() {
   }, [project.countdownSoundVolume]);
 
   useEffect(() => {
-    if (conclusionMusicAudioRef.current) conclusionMusicAudioRef.current.volume = project.musicVolume / 100;
-  }, [project.musicVolume]);
+    if (conclusionMusicAudioRef.current) conclusionMusicAudioRef.current.volume = project.conclusionMusicVolume / 100;
+  }, [project.conclusionMusicVolume]);
 
   useEffect(() => {
     if (answerSoundAudioRef.current) answerSoundAudioRef.current.volume = project.answerSoundVolume / 100;
@@ -299,10 +299,15 @@ export default function Home() {
     const audio = conclusionMusicAudioRef.current;
     if (!audio) return;
     if (!audio.paused) { audio.pause(); audio.currentTime = 0; return; }
-    audio.volume = project.musicVolume / 100;
+    audio.volume = project.conclusionMusicVolume / 100;
     audio.currentTime = 0;
     try { await audio.play(); }
     catch { setFeedback("La musique de conclusion n’a pas pu être lue."); }
+  };
+
+  const updateConclusionMusicVolume = (conclusionMusicVolume: number) => {
+    if (conclusionMusicAudioRef.current) conclusionMusicAudioRef.current.volume = conclusionMusicVolume / 100;
+    updateProject({ conclusionMusicVolume });
   };
 
   const previewAnswerSound = async () => {
@@ -470,7 +475,7 @@ export default function Home() {
   const previewConclusionFrames = previewQuestion === "all" ? conclusionDurationFrames(project) : 0;
   const previewDuration = questionVideoDuration(visibleQuestions, introductionDurationFrames(project), previewConclusionFrames);
   const voiceFilesCount = project.questions.reduce((total, question) => total + Number(Boolean(question.questionAudio)) + Number(Boolean(question.answerAudio)) + Number(Boolean(question.commentaryAudio)), Number(Boolean(project.introductionAudio)) + Number(Boolean(project.conclusionAudio)));
-  const previewKey = `${previewQuestion === "all" ? "all" : `question-${previewQuestion}`}-${project.voiceVolume}-${project.countdownSound || "no-countdown-sound"}-${project.countdownSoundVolume}-${project.answerSound || "no-answer-sound"}-${project.answerSoundVolume}-${project.conclusionMusic || "theme-music"}`;
+  const previewKey = `${previewQuestion === "all" ? "all" : `question-${previewQuestion}`}-${project.voiceVolume}-${project.countdownSound || "no-countdown-sound"}-${project.countdownSoundVolume}-${project.answerSound || "no-answer-sound"}-${project.answerSoundVolume}-${project.conclusionMusic || "theme-music"}-${project.conclusionMusicVolume}`;
   const questionRanges = Array.from({ length: Math.ceil(project.questions.length / 10) }, (_, index) => {
     const start = index * 10;
     return { start, end: Math.min(start + 10, project.questions.length) };
@@ -656,8 +661,8 @@ export default function Home() {
                   onUpdate={(id, conclusionLayer) => updateProject(id === "primary" ? { conclusionLayer } : id === "secondary" ? { conclusionLayer2: conclusionLayer } : { conclusionLayer3: conclusionLayer })}
                 />
                 <div className="music-field conclusion-music-field" id="musique-conclusion">
-                  <div className="music-heading"><div><strong>MUSIQUE DE CONCLUSION</strong><small>{project.conclusionMusic ? "Cette piste remplacera la musique du thème pendant la conclusion." : "Sans piste dédiée, la musique du thème continuera pendant la conclusion."} Volume réglé avec la jauge générale de musique.</small></div><label className="upload-button">{mediaBusy === "conclusion-music" ? "Import…" : project.conclusionMusic ? "Remplacer la musique" : "Importer une musique"}<input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/wave,audio/x-wav,audio/mp4,audio/x-m4a,audio/aac,audio/ogg,audio/webm,.mp3,.wav,.m4a,.aac,.ogg,.webm" disabled={Boolean(mediaBusy)} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadConclusionMusic(file); event.currentTarget.value = ""; }} /></label>{project.conclusionMusic && <button className="text-button" onClick={() => updateProject({ conclusionMusic: null })}>Retirer</button>}</div>
-                  {project.conclusionMusic && <div className="conclusion-music-preview-row"><button type="button" className="countdown-preview-button" onClick={() => void previewConclusionMusic()}>{conclusionMusicPreviewPlaying ? "■ Arrêter l’écoute" : "▶ Écouter la musique"}</button><span>Le volume suit le réglage général de musique ({project.musicVolume} %).</span><audio ref={conclusionMusicAudioRef} className="countdown-audio-source" preload="metadata" src={assetUrl(project.conclusionMusic) || undefined} onPlay={() => setConclusionMusicPreviewPlaying(true)} onPause={() => setConclusionMusicPreviewPlaying(false)} onEnded={() => setConclusionMusicPreviewPlaying(false)} aria-label="Aperçu de la musique de conclusion" /></div>}
+                  <div className="music-heading"><div><strong>MUSIQUE DE CONCLUSION</strong><small>{project.conclusionMusic ? "Cette piste remplacera la musique du thème pendant la conclusion." : "Sans piste dédiée, la musique du thème continuera pendant la conclusion."}</small></div><label className="upload-button">{mediaBusy === "conclusion-music" ? "Import…" : project.conclusionMusic ? "Remplacer la musique" : "Importer une musique"}<input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/wave,audio/x-wav,audio/mp4,audio/x-m4a,audio/aac,audio/ogg,audio/webm,.mp3,.wav,.m4a,.aac,.ogg,.webm" disabled={Boolean(mediaBusy)} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadConclusionMusic(file); event.currentTarget.value = ""; }} /></label>{project.conclusionMusic && <button className="text-button" onClick={() => updateProject({ conclusionMusic: null })}>Retirer</button>}</div>
+                  {project.conclusionMusic && <><div className="conclusion-music-preview-row"><button type="button" className="countdown-preview-button" onClick={() => void previewConclusionMusic()}>{conclusionMusicPreviewPlaying ? "■ Arrêter l’écoute" : "▶ Écouter la musique"}</button><span>Le niveau de l’aperçu suit cette jauge.</span><audio ref={conclusionMusicAudioRef} className="countdown-audio-source" preload="metadata" src={assetUrl(project.conclusionMusic) || undefined} onPlay={() => setConclusionMusicPreviewPlaying(true)} onPause={() => setConclusionMusicPreviewPlaying(false)} onEnded={() => setConclusionMusicPreviewPlaying(false)} aria-label="Aperçu de la musique de conclusion" /></div><Slider label="Volume de la musique de conclusion" value={project.conclusionMusicVolume} min={0} max={100} unit=" %" onChange={updateConclusionMusicVolume} /></>}
                 </div>
                 <div className="intro-voice-row"><span className={conclusionVoiceReady && project.conclusionAudio ? "voice-done" : project.conclusionText.trim() ? "voice-missing" : "voice-done"}>{project.conclusionAudio && conclusionVoiceReady ? `Voix prête · ${project.conclusionAudioDuration?.toFixed(1)} s` : project.conclusionText.trim() ? "Voix à générer" : "Ajoutez un texte pour créer la voix"}</span><button className="generate-one" disabled={voiceBusy || !project.conclusionText.trim()} onClick={() => void generateConclusionVoice()}>{voiceBusy ? "Génération…" : project.conclusionAudio ? "Régénérer la voix" : "Générer la voix de conclusion"}</button></div>
                 {project.conclusionAudio && <audio className="intro-audio-preview" controls preload="none" src={assetUrl(project.conclusionAudio) || undefined} aria-label="Écouter la narration de conclusion" />}

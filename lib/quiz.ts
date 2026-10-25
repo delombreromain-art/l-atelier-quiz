@@ -82,6 +82,7 @@ export type QuizProject = {
   conclusionText: string;
   conclusionBackgroundImage: string | null;
   conclusionMusic: string | null;
+  conclusionMusicVolume: number;
   conclusionImage: string | null;
   conclusionLayer: ConclusionLayer;
   conclusionImage2: string | null;
@@ -222,6 +223,7 @@ export const defaultProject: QuizProject = {
   conclusionText: "",
   conclusionBackgroundImage: null,
   conclusionMusic: null,
+  conclusionMusicVolume: 35,
   conclusionImage: null,
   conclusionLayer: CONCLUSION_LAYER_DEFAULTS,
   conclusionImage2: null,
@@ -429,6 +431,9 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
     conclusionText: typeof value.conclusionText === "string" ? value.conclusionText.slice(0, 1000) : "",
     conclusionBackgroundImage: typeof value.conclusionBackgroundImage === "string" ? value.conclusionBackgroundImage : null,
     conclusionMusic: typeof value.conclusionMusic === "string" ? value.conclusionMusic : null,
+    conclusionMusicVolume: typeof value.conclusionMusicVolume === "number"
+      ? Math.min(100, Math.max(0, value.conclusionMusicVolume))
+      : defaultProject.conclusionMusicVolume,
     conclusionImage: typeof value.conclusionImage === "string" ? value.conclusionImage : null,
     conclusionLayer,
     conclusionImage2: typeof value.conclusionImage2 === "string" ? value.conclusionImage2 : null,
