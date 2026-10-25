@@ -274,6 +274,13 @@
 @media (max-width: 680px) { .music-heading { align-items: flex-start; flex-wrap: wrap; } .music-controls { grid-template-columns: 1fr; } }
 .intro-voice-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
 .intro-audio-preview { display: block; width: 100%; height: 30px; margin-top: 8px; }
+.intro-image-control { display: flex; align-items: center; gap: 14px; margin-top: 12px; padding: 10px; border: 1px solid #34352d; background: #131711; }
+.intro-image-preview { flex: 0 0 144px; height: 82px; display: grid; place-items: center; overflow: hidden; border: 1px solid #514a36; background: #0d110d; color: #8d897a; text-align: center; font-size: 8px; line-height: 1.6; letter-spacing: .08em; }
+.intro-image-preview img { width: 100%; height: 100%; object-fit: contain; }
+.intro-image-actions { display: grid; gap: 6px; }
+.intro-image-actions strong { color: #d5c28f; font-size: 8px; letter-spacing: .08em; }
+.intro-image-actions small { color: #888679; font-size: 8px; line-height: 1.5; }
+.intro-image-actions > div { display: flex; align-items: center; gap: 12px; }
 .intro-images { margin-top: 14px; padding-top: 12px; border-top: 1px solid #34352d; }
 .intro-images-heading { display: flex; align-items: center; gap: 10px; }
 .intro-images-heading > div { flex: 1; display: grid; gap: 4px; }

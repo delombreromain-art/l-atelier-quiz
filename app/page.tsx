@@ -7,6 +7,10 @@ import {
   answerNarrationFrames,
   defaultProject,
   introductionDurationFrames,
+  INTRODUCTION_QUESTION_GAP_FRAMES,
+  FPS,
+  MAX_INTRODUCTION_SECONDS,
+  MIN_INTRODUCTION_SECONDS,
   isVoiceId,
   makeQuestion,
   MAX_QUESTIONS,
@@ -117,6 +121,11 @@ export default function Home() {
     return () => { stopped = true; window.clearTimeout(timer); };
   }, [renderStatus?.id, renderStatus?.stage]);
 
+  useEffect(() => {
+    if (!loaded || previewQuestion === "all") return;
+    playerRef.current?.seekTo(Math.round(project.introductionDurationSeconds * FPS) + INTRODUCTION_QUESTION_GAP_FRAMES);
+  }, [loaded, previewQuestion, project.introductionDurationSeconds]);
+
   const updateProject = useCallback((patch: Partial<QuizProject>) => {
     setProject((current) => ({ ...current, ...patch }));
   }, []);
@@ -171,21 +180,6 @@ export default function Home() {
     } catch (error) { setFeedback(error instanceof Error ? error.message : "Import de la musique impossible."); }
     finally { setMediaBusy(""); }
   }, [updateProject]);
-
-  const uploadIntroductionImages = async (files: File[]) => {
-    setMediaBusy("introduction-images"); setFeedback("");
-    try {
-      for (const file of files) {
-        const body = new FormData(); body.set("file", file);
-        const response = await fetch("/api/media", { method: "POST", body });
-        const result = await response.json() as { path?: string; error?: string };
-        if (!response.ok || !result.path) throw new Error(result.error || `Import impossible pour ${file.name}.`);
-        setProject((current) => ({ ...current, introductionImages: [...current.introductionImages, result.path!] }));
-      }
-      setFeedback(`${files.length} image${files.length > 1 ? "s" : ""} ajoutée${files.length > 1 ? "s" : ""} à l’introduction.`);
-    } catch (error) { setFeedback(error instanceof Error ? error.message : "Import des images impossible."); }
-    finally { setMediaBusy(""); }
-  };
 
   const generateVoice = useCallback(async (index: number, part: "question" | "answer" | "commentary") => {
     const question = project.questions[index];
@@ -265,7 +259,7 @@ export default function Home() {
     const selected = scope === "all" ? project.questions : [project.questions[index]];
     if (selected.some((question) => !question?.prompt.trim() || !question?.answer.trim())) { setFeedback(scope === "all" ? "Complétez toutes les questions et leurs réponses avant l’export." : `Complétez la question ${index + 1} et sa réponse avant l’export.`); return; }
     if (!introVoiceReady) { setFeedback("Générez la narration de l’introduction avec la voix et la vitesse sélectionnées."); navigate("introduction"); return; }
-    if ((project.introductionAudioDuration ?? 0) > 25) { setFeedback("La narration d’introduction doit tenir dans les 25 secondes prévues. Raccourcissez le texte puis régénérez la voix."); navigate("introduction"); return; }
+    if ((project.introductionAudioDuration ?? 0) > project.introductionDurationSeconds) { setFeedback("La narration d’introduction dépasse la durée choisie. Raccourcissez le texte puis régénérez la voix."); navigate("introduction"); return; }
     const audioReady = selected.every((question) => question.questionAudio && question.answerAudio && question.questionAudioVoice === project.voice && question.answerAudioVoice === project.voice && question.questionAudioRate === project.speechRate && question.answerAudioRate === project.speechRate && (question.questionAudioDuration ?? 16) <= questionDurationFrames(question) / 30 && (question.answerAudioDuration ?? 5) <= 4 && (!question.answerCommentary.trim() || (question.commentaryAudio && question.commentaryAudioVoice === project.voice && question.commentaryAudioRate === project.speechRate && answerNarrationFrames(question.answerAudioDuration, question.commentaryAudioDuration) <= 4 * 30)));
     if (!audioReady) { setFeedback("Générez les voix manquantes avec la voix sélectionnée. Les commentaires saisis doivent aussi avoir leur narration."); navigate("voix"); return; }
     setRenderStarting(true); setRenderStatus(null); setFeedback("");
@@ -342,18 +336,19 @@ export default function Home() {
           <div className="main-grid">
             <div className="editor-column">
               <section className="panel intro-panel" id="introduction">
-                <div className="panel-heading"><div><span className="panel-step">01</span><div><h2>Introduction de la vidéo</h2><p>Une ouverture de 25 secondes, illustrée par les images et thèmes du quiz.</p></div></div></div>
-                <label className="field-label">TEXTE D’INTRODUCTION <span>FACULTATIF · 1 000 CARACTÈRES MAXIMUM</span><textarea value={project.introductionText} maxLength={1000} rows={4} placeholder="Bienvenue dans ce quiz… Présentez le thème et invitez les spectateurs à jouer." onChange={(event) => updateProject({ introductionText: event.target.value, introductionAudio: null, introductionAudioDuration: null, introductionAudioVoice: null, introductionAudioRate: null })} /></label>
+                <div className="panel-heading"><div><span className="panel-step">01</span><div><h2>Introduction de la vidéo</h2><p>L’image choisie occupe tout l’écran pendant la durée réglée.</p></div></div></div>
+                <label className="field-label">TEXTE LU PAR LA VOIX OFF <span>FACULTATIF · 1 000 CARACTÈRES MAXIMUM</span><textarea value={project.introductionText} maxLength={1000} rows={4} placeholder="Bienvenue dans ce quiz… Présentez le thème et invitez les spectateurs à jouer." onChange={(event) => updateProject({ introductionText: event.target.value, introductionAudio: null, introductionAudioDuration: null, introductionAudioVoice: null, introductionAudioRate: null })} /></label>
+                <Slider label="Durée de l’introduction" value={project.introductionDurationSeconds} min={MIN_INTRODUCTION_SECONDS} max={MAX_INTRODUCTION_SECONDS} unit=" s" onChange={(introductionDurationSeconds) => updateProject({ introductionDurationSeconds })} />
+                <div className="intro-image-control">
+                  <div className="intro-image-preview">{project.introductionImage ? <Image src={assetUrl(project.introductionImage) || ""} alt="Aperçu de l’image d’introduction en plein écran" width={320} height={180} unoptimized /> : <span>IMAGE FACULTATIVE<br />PLEIN ÉCRAN</span>}</div>
+                  <div className="intro-image-actions"><strong>IMAGE D’ILLUSTRATION</strong><small>PNG, JPG ou WebP · plein écran avec zoom et fondu.</small><div><label className="upload-button">{mediaBusy === "introduction-image" ? "Import…" : project.introductionImage ? "Remplacer l’image" : "Ajouter une image"}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={Boolean(mediaBusy)} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(file, (introductionImage) => updateProject({ introductionImage }), "introduction-image"); event.currentTarget.value = ""; }} /></label>{project.introductionImage && <button className="text-button" onClick={() => updateProject({ introductionImage: null })}>Supprimer</button>}</div></div>
+                </div>
                 <div className="intro-voice-row"><span className={introVoiceReady && project.introductionAudio ? "voice-done" : project.introductionText.trim() ? "voice-missing" : "voice-done"}>{project.introductionAudio && introVoiceReady ? `Voix prête · ${project.introductionAudioDuration?.toFixed(1)} s` : project.introductionText.trim() ? "Voix à générer" : "Ajoutez un texte pour créer la voix"}</span><button className="generate-one" disabled={voiceBusy || !project.introductionText.trim()} onClick={() => void generateIntroductionVoice()}>{voiceBusy ? "Génération…" : project.introductionAudio ? "Régénérer la voix" : "Générer la voix d’introduction"}</button></div>
                 {project.introductionAudio && <audio className="intro-audio-preview" controls preload="none" src={assetUrl(project.introductionAudio) || undefined} aria-label="Écouter la narration de l’introduction" />}
-                <div className="intro-images">
-                  <div className="intro-images-heading"><div><strong>IMAGES DE PRÉSENTATION</strong><small>Le thème d’ouverture et les nouveaux thèmes s’intègrent automatiquement. Ajoutez des visuels ; ils se répartissent sur les 25 secondes d’introduction.</small></div><label className="upload-button">{mediaBusy === "introduction-images" ? "Import…" : "Ajouter des images"}<input type="file" accept="image/png,image/jpeg,image/webp" multiple disabled={Boolean(mediaBusy)} onChange={(event) => { const files = Array.from(event.target.files ?? []); if (files.length) void uploadIntroductionImages(files); event.currentTarget.value = ""; }} /></label></div>
-                  {project.introductionImages.length > 0 && <div className="intro-image-list">{project.introductionImages.map((image, index) => <div className="intro-image-item" key={`${image}-${index}`}><Image src={assetUrl(image) || ""} alt={`Visuel d’introduction ${index + 1}`} width={180} height={104} unoptimized /><span>{index + 1}</span><button className="text-button" onClick={() => setProject((current) => ({ ...current, introductionImages: current.introductionImages.filter((_item, imageIndex) => imageIndex !== index) }))}>Retirer</button></div>)}</div>}
-                </div>
               </section>
               <section className="panel questions-panel" id="questions">
                 <div className="panel-heading"><div><span className="panel-step">03</span><div><h2>Questions &amp; réponses</h2><p>Ajoutez jusqu’à 60 questions ; le rythme reste identique pour chacune.</p></div></div><div className="question-count">{project.questions.length}<small> / {MAX_QUESTIONS}</small></div></div>
-                <div className="timing-strip"><span><b className="timing-cream">25 s</b> introduction</span><i>→</i><span><b className="timing-green">2 s</b> pause</span><i>→</i><span><b className="timing-gold">10 ou 15 s</b> question</span><i>→</i><span><b className="timing-cream">4 s</b> réponse</span><i>→</i><span><b className="timing-green">2 s</b> pause</span></div>
+                <div className="timing-strip"><span><b className="timing-cream">{project.introductionDurationSeconds} s</b> introduction</span><i>→</i><span><b className="timing-green">2 s</b> pause</span><i>→</i><span><b className="timing-gold">10 ou 15 s</b> question</span><i>→</i><span><b className="timing-cream">4 s</b> réponse</span><i>→</i><span><b className="timing-green">2 s</b> pause</span></div>
                 <div className="question-list">
                   {project.questions.map((question, index) => {
                     const questionReady = question.questionAudio && question.questionAudioVoice === project.voice && question.questionAudioRate === project.speechRate;
@@ -445,7 +440,7 @@ export default function Home() {
                 <div className="panel-heading preview-heading"><div><span className="panel-step">05</span><div><h2>Prévisualisation</h2><p>La composition Remotion sera rendue en MP4.</p></div></div><span className="resolution-chip">16:9</span></div>
                 <div className="preview-frame">{loaded ? <Player key={previewKey} ref={playerRef} component={QuizVideo} inputProps={{ project, questions: visibleQuestions, questionOffset }} durationInFrames={previewDuration} compositionWidth={1920} compositionHeight={1080} fps={30} controls clickToPlay loop={false} errorFallback={({ error }) => <div className="preview-error"><strong>Erreur de prévisualisation</strong><span>{error.message}</span></div>} style={{ width: "100%" }} /> : <div className="preview-loading">Ouverture du projet…</div>}</div>
                 <div className="preview-tools"><span>APERÇU</span><div className="preview-switches"><button className={previewQuestion === "all" ? "active" : ""} onClick={() => setPreviewQuestion("all")}>Tout le quiz</button>{project.questions.map((question, index) => <button className={previewQuestion === index ? "active" : ""} key={question.id} onClick={() => setPreviewQuestion(index)}>Q{index + 1}</button>)}</div><span>{(previewDuration / 30).toFixed(0)} s</span></div>
-                <div className="timeline" aria-label="Timeline du quiz"><div className="timeline-intro"><span>INTRO</span><i>25 s</i></div><div className="timeline-gap"><span>PAUSE</span><i>2 s</i></div>{project.questions.map((question, index) => <button key={question.id} className={`timeline-question ${previewQuestion === index ? "chosen" : ""}`} onClick={() => setPreviewQuestion(index)}>{question.startsTheme && <b title="Nouveau thème avant cette question">T ·</b>}<span>Q{index + 1}</span><i>{questionDurationFrames(question) / 30} s</i><i>4 s</i>{index < project.questions.length - 1 && <i>{transitionFramesAfter(project.questions, index) / 30} s</i>}</button>)}</div>
+                <div className="timeline" aria-label="Timeline du quiz"><div className="timeline-intro"><span>INTRO</span><i>{project.introductionDurationSeconds} s</i></div><div className="timeline-gap"><span>PAUSE</span><i>2 s</i></div>{project.questions.map((question, index) => <button key={question.id} className={`timeline-question ${previewQuestion === index ? "chosen" : ""}`} onClick={() => setPreviewQuestion(index)}>{question.startsTheme && <b title="Nouveau thème avant cette question">T ·</b>}<span>Q{index + 1}</span><i>{questionDurationFrames(question) / 30} s</i><i>4 s</i>{index < project.questions.length - 1 && <i>{transitionFramesAfter(project.questions, index) / 30} s</i>}</button>)}</div>
               </section>
 
               <section className="panel export-panel" id="export">

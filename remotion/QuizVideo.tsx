@@ -1,5 +1,6 @@
 import {
   Audio,
+  Easing,
   Img,
   interpolate,
   Sequence,
@@ -12,7 +13,6 @@ import {
   FPS,
   THEME_FRAMES,
   introductionDurationFrames,
-  introductionSlides,
   questionStartFrame,
   questionDurationFrames,
   transitionFramesAfter,
@@ -43,10 +43,10 @@ const answerTextFontSize = (answer: string, commentary: string) => {
   return 18;
 };
 
-const Backdrop: React.FC<{ image: string | null; opacity?: number }> = ({ image, opacity = 1 }) => (
+const Backdrop: React.FC<{ image: string | null; opacity?: number; scale?: number }> = ({ image, opacity = 1, scale = 1 }) => (
   <div style={{ position: "absolute", inset: 0, background: "#10201a", opacity }}>
     {image ? (
-      <Img src={toPublicUrl(image)} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+      <Img src={toPublicUrl(image)} style={{ width: "100%", height: "100%", objectFit: "cover", transform: `scale(${scale})` }} />
     ) : (
       <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 50% 48%, #284034 0%, #14221b 58%, #0d1512 100%)" }} />
     )}
@@ -96,11 +96,11 @@ const QuestionAnswerCard: React.FC<{ question: QuizQuestion; number: number; fra
   );
 };
 
-const ThemeImageSequence: React.FC<{ image: string | null; frame: number; duration?: number }> = ({ image, frame, duration = THEME_FRAMES }) => {
+const ThemeImageSequence: React.FC<{ image: string | null; frame: number; duration?: number; zIndex?: number; opacity?: number }> = ({ image, frame, duration = THEME_FRAMES, zIndex = 40, opacity: layerOpacity = 1 }) => {
   const fadeFrames = Math.min(12, Math.floor(duration / 3));
   const opacity = interpolate(frame, [0, fadeFrames, duration - fadeFrames, duration], [0, 1, 1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   return (
-    <div style={{ position: "absolute", zIndex: 40, inset: 0, overflow: "hidden", backgroundColor: "#080b09", opacity }}>
+    <div style={{ position: "absolute", zIndex, inset: 0, overflow: "hidden", backgroundColor: "#080b09", opacity: opacity * layerOpacity }}>
       {image && <>
         <Img src={toPublicUrl(image)} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(24px) brightness(.45)", transform: "scale(1.08)" }} />
         <Img src={toPublicUrl(image)} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", filter: "drop-shadow(0 10px 35px #000b)" }} />
@@ -109,11 +109,20 @@ const ThemeImageSequence: React.FC<{ image: string | null; frame: number; durati
   );
 };
 
+const IntroductionImage: React.FC<{ image: string; frame: number; duration: number }> = ({ image, frame, duration }) => {
+  const fadeInFrames = Math.max(1, Math.round(0.7 * FPS));
+  const fadeOutFrames = Math.min(Math.round(0.7 * FPS), Math.max(1, Math.round(duration * 0.05)));
+  const fadeIn = interpolate(frame, [0, fadeInFrames], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) });
+  const fadeOut = interpolate(frame, [duration - fadeOutFrames, duration], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) });
+  const zoom = interpolate(frame, [0, duration], [1, 1.03], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) });
+  return <div style={{ position: "absolute", zIndex: 4, inset: 0, overflow: "hidden", background: "#000", opacity: fadeOut }}><Img src={toPublicUrl(image)} style={{ display: "block", width: "100%", height: "100%", objectFit: "contain", opacity: fadeIn, transform: `scale(${zoom})` }} /></div>;
+};
+
 const resolveTheme = (project: QuizVideoProps["project"], questionIndex: number) => {
   let title = project.themeTitle.trim() || project.title || "Mon quiz";
   let image = project.themeImage;
-  let background = project.background;
-  let logo = project.logo;
+  const background = project.background;
+  const logo = project.logo;
   for (let index = 1; index <= questionIndex; index += 1) {
     const question = project.questions[index];
     if (!question?.startsTheme) continue;
@@ -153,7 +162,6 @@ const Timer: React.FC<{ frame: number; duration: number; displaySeconds?: boolea
 export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questionOffset }) => {
   const frame = useCurrentFrame();
   const introFrames = introductionDurationFrames(project);
-  const introSlides = introductionSlides(project);
   const isOpeningTheme = frame < introFrames;
   const questionsFrame = Math.max(0, frame - introFrames);
   const matchingIndex = questions.findIndex((_item, index) => questionsFrame < questionStartFrame(questions, index + 1, introFrames) - introFrames);
@@ -196,13 +204,7 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
         </Sequence>
       ))}
       <Backdrop image={project.background} />
-      {isOpeningTheme && introSlides.map((image, index) => {
-        const slideDuration = Math.ceil(introFrames / Math.max(1, introSlides.length));
-        const slideStart = index * slideDuration;
-        return frame >= slideStart && frame < slideStart + slideDuration
-          ? <ThemeImageSequence key={`intro-image-${index}`} image={image} frame={frame - slideStart} duration={slideDuration} />
-          : null;
-      })}
+      {isOpeningTheme && project.introductionImage && <IntroductionImage image={project.introductionImage} frame={frame} duration={introFrames} />}
       {hasQuestionStarted && localFrame < questionFrames && <Illustration image={question.image} />}
       {hasQuestionStarted && localFrame >= questionFrames && localFrame < questionFrames + ANSWER_FRAMES && <Illustration image={question.answerImage || (question.keepImageOnAnswer ? question.image : null)} />}
       {hasQuestionStarted && localFrame < questionFrames + ANSWER_FRAMES && <QuestionAnswerCard question={question} number={questionNumber} frame={localFrame} questionFrames={questionFrames} />}
@@ -213,11 +215,11 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
           : null
       )}
       {isHourglassTransitionVariation && <Timer frame={questionFrames} duration={questionFrames} displaySeconds={false} transitionPulse={transitionProgress} />}
-      <Logo source={project.logo} />
+      {!isOpeningTheme && <Logo source={project.logo} />}
       {hasQuestionStarted && <div style={{ position: "absolute", zIndex: 20, bottom: 72, left: 64, color: "#e4c574", fontSize: 34, fontWeight: 700, letterSpacing: 5, lineHeight: 1, textShadow: "0 2px 10px #000" }}>{String(questionNumber).padStart(2, "0")} / {String(project.questions.length).padStart(2, "0")}</div>}
-      <div style={{ position: "absolute", zIndex: 1, inset: 18, border: "1px solid #dfc27650" }} />
-      <div style={{ position: "absolute", zIndex: 1, top: 39, right: 47, width: 18, height: 18, borderTop: "1px solid #dfc27688", borderRight: "1px solid #dfc27688" }} />
-      <div style={{ position: "absolute", zIndex: 1, bottom: 39, left: 47, width: 18, height: 18, borderBottom: "1px solid #dfc27688", borderLeft: "1px solid #dfc27688" }} />
+      {!isOpeningTheme && <div style={{ position: "absolute", zIndex: 1, inset: 18, border: "1px solid #dfc27650" }} />}
+      {!isOpeningTheme && <div style={{ position: "absolute", zIndex: 1, top: 39, right: 47, width: 18, height: 18, borderTop: "1px solid #dfc27688", borderRight: "1px solid #dfc27688" }} />}
+      {!isOpeningTheme && <div style={{ position: "absolute", zIndex: 1, bottom: 39, left: 47, width: 18, height: 18, borderBottom: "1px solid #dfc27688", borderLeft: "1px solid #dfc27688" }} />}
     </div>
   );
 };

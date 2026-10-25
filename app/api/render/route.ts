@@ -118,8 +118,8 @@ export async function POST(request: Request) {
   )) {
     return NextResponse.json({ error: "Générez la narration de l’introduction avec la voix et la vitesse sélectionnées avant l’export." }, { status: 400 });
   }
-  if ((project.introductionAudioDuration ?? 0) > 25) {
-    return NextResponse.json({ error: "La narration d’introduction doit tenir dans les 25 secondes prévues." }, { status: 400 });
+  if ((project.introductionAudioDuration ?? 0) > project.introductionDurationSeconds) {
+    return NextResponse.json({ error: `La narration d’introduction doit tenir dans les ${project.introductionDurationSeconds} secondes choisies.` }, { status: 400 });
   }
   const missingAudio = selected.some((question) =>
     !question.questionAudio || !question.answerAudio ||

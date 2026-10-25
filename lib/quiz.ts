@@ -6,7 +6,10 @@ export const ANSWER_FRAMES = 4 * FPS;
 export const ANSWER_COMMENTARY_GAP_FRAMES = FPS;
 export const TRANSITION_FRAMES = 2 * FPS;
 export const THEME_FRAMES = 4 * FPS;
-export const INTRODUCTION_FRAMES = 25 * FPS;
+export const DEFAULT_INTRODUCTION_SECONDS = 20;
+export const MIN_INTRODUCTION_SECONDS = 12;
+export const MAX_INTRODUCTION_SECONDS = 40;
+export const INTRODUCTION_FRAMES = DEFAULT_INTRODUCTION_SECONDS * FPS;
 export const INTRODUCTION_QUESTION_GAP_FRAMES = 2 * FPS;
 export const MAX_QUESTIONS = 60;
 
@@ -42,6 +45,8 @@ export type QuizQuestion = {
 export type QuizProject = {
   title: string;
   introductionText: string;
+  introductionImage: string | null;
+  introductionDurationSeconds: number;
   introductionAudio: string | null;
   introductionAudioDuration: number | null;
   introductionAudioVoice: VoiceId | null;
@@ -161,6 +166,8 @@ export const parseQuizCsv = (source: string): QuizQuestion[] => {
 export const defaultProject: QuizProject = {
   title: "Mon premier quiz",
   introductionText: "",
+  introductionImage: null,
+  introductionDurationSeconds: DEFAULT_INTRODUCTION_SECONDS,
   introductionAudio: null,
   introductionAudioDuration: null,
   introductionAudioVoice: null,
@@ -212,7 +219,8 @@ export const introductionSlides = (project: QuizProject) => [
   ...project.introductionImages,
 ].filter((image): image is string => Boolean(image));
 
-export const introductionDurationFrames = (_project: QuizProject) => INTRODUCTION_FRAMES;
+export const introductionDurationFrames = (project: QuizProject) =>
+  Math.round(project.introductionDurationSeconds * FPS);
 
 export const questionStartFrame = (questions: QuizQuestion[], index: number, introFrames = INTRODUCTION_FRAMES) => {
   let frame = introFrames + INTRODUCTION_QUESTION_GAP_FRAMES;
@@ -284,6 +292,10 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
   return {
     title: typeof value.title === "string" ? value.title.slice(0, 120) : "Mon quiz",
     introductionText: typeof value.introductionText === "string" ? value.introductionText.slice(0, 1000) : "",
+    introductionImage: typeof value.introductionImage === "string" ? value.introductionImage : null,
+    introductionDurationSeconds: typeof value.introductionDurationSeconds === "number"
+      ? Math.min(MAX_INTRODUCTION_SECONDS, Math.max(MIN_INTRODUCTION_SECONDS, value.introductionDurationSeconds))
+      : DEFAULT_INTRODUCTION_SECONDS,
     introductionAudio: typeof value.introductionAudio === "string" ? value.introductionAudio : null,
     introductionAudioDuration: typeof value.introductionAudioDuration === "number" ? Math.max(0, value.introductionAudioDuration) : null,
     introductionAudioVoice: isVoiceId(value.introductionAudioVoice) ? value.introductionAudioVoice : null,
