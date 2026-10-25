@@ -17,6 +17,7 @@ export const INTRODUCTION_QUESTION_GAP_FRAMES = 2 * FPS;
 export const MAX_QUESTIONS = 60;
 
 export type VoiceId = "fr_FR-siwis-medium" | "fr_FR-upmc-medium" | "fr_FR-tom-medium" | "fr_FR-mls-medium";
+export type VoiceSource = "ai" | "recording";
 export type IntroductionLayerId = "logo" | "questionsPanel" | "history" | "geography" | "science" | "cinema" | "hourglass";
 export type IntroductionLayer = {
   image: string | null;
@@ -67,6 +68,15 @@ export type QuizQuestion = {
   questionAudioDuration: number | null;
   answerAudioDuration: number | null;
   commentaryAudioDuration: number | null;
+  questionRecording: string | null;
+  questionRecordingDuration: number | null;
+  answerRecording: string | null;
+  answerRecordingDuration: number | null;
+  commentaryRecording: string | null;
+  commentaryRecordingDuration: number | null;
+  questionVoiceSource: VoiceSource;
+  answerVoiceSource: VoiceSource;
+  commentaryVoiceSource: VoiceSource;
 };
 
 export type QuizProject = {
@@ -79,6 +89,9 @@ export type QuizProject = {
   introductionAudioDuration: number | null;
   introductionAudioVoice: VoiceId | null;
   introductionAudioRate: number | null;
+  introductionRecording: string | null;
+  introductionRecordingDuration: number | null;
+  introductionVoiceSource: VoiceSource;
   conclusionText: string;
   conclusionBackgroundImage: string | null;
   conclusionMusic: string | null;
@@ -94,6 +107,9 @@ export type QuizProject = {
   conclusionAudioDuration: number | null;
   conclusionAudioVoice: VoiceId | null;
   conclusionAudioRate: number | null;
+  conclusionRecording: string | null;
+  conclusionRecordingDuration: number | null;
+  conclusionVoiceSource: VoiceSource;
   introductionImages: string[];
   background: string | null;
   backgroundMusic: string | null;
@@ -142,6 +158,15 @@ export const makeQuestion = (number: number): QuizQuestion => ({
   questionAudioDuration: null,
   answerAudioDuration: null,
   commentaryAudioDuration: null,
+  questionRecording: null,
+  questionRecordingDuration: null,
+  answerRecording: null,
+  answerRecordingDuration: null,
+  commentaryRecording: null,
+  commentaryRecordingDuration: null,
+  questionVoiceSource: "ai",
+  answerVoiceSource: "ai",
+  commentaryVoiceSource: "ai",
 });
 
 export const parseQuizCsv = (source: string): QuizQuestion[] => {
@@ -220,6 +245,9 @@ export const defaultProject: QuizProject = {
   introductionAudioDuration: null,
   introductionAudioVoice: null,
   introductionAudioRate: null,
+  introductionRecording: null,
+  introductionRecordingDuration: null,
+  introductionVoiceSource: "ai",
   conclusionText: "",
   conclusionBackgroundImage: null,
   conclusionMusic: null,
@@ -235,6 +263,9 @@ export const defaultProject: QuizProject = {
   conclusionAudioDuration: null,
   conclusionAudioVoice: null,
   conclusionAudioRate: null,
+  conclusionRecording: null,
+  conclusionRecordingDuration: null,
+  conclusionVoiceSource: "ai",
   introductionImages: [],
   background: null,
   backgroundMusic: null,
@@ -268,13 +299,30 @@ export const defaultProject: QuizProject = {
   ],
 };
 
-export const questionDurationFrames = (question: QuizQuestion) => {
+export const narrationAudio = (question: QuizQuestion, part: "question" | "answer" | "commentary", voice?: VoiceId, rate?: number) => {
+  const recording = question[`${part}Recording`];
+  if (question[`${part}VoiceSource`] === "recording") return recording ? { path: recording, duration: question[`${part}RecordingDuration`] ?? 0 } : null;
+  const audio = question[`${part}Audio`];
+  if (audio && (voice === undefined || question[`${part}AudioVoice`] === voice) && (rate === undefined || question[`${part}AudioRate`] === rate)) {
+    return { path: audio, duration: question[`${part}AudioDuration`] ?? 0 };
+  }
+  return null;
+};
+
+export const questionDurationFrames = (question: QuizQuestion, voice?: VoiceId, rate?: number) => {
   const visibleTextLength = question.title.length + question.prompt.length;
-  return (question.force15Seconds || visibleTextLength > LONG_QUESTION_CHARACTER_LIMIT ? LONG_QUESTION_SECONDS : DEFAULT_QUESTION_SECONDS) * FPS;
+  const base = (question.force15Seconds || visibleTextLength > LONG_QUESTION_CHARACTER_LIMIT ? LONG_QUESTION_SECONDS : DEFAULT_QUESTION_SECONDS) * FPS;
+  return Math.max(base, Math.ceil((narrationAudio(question, "question", voice, rate)?.duration ?? 0) * FPS));
 };
 
 export const answerNarrationFrames = (answerDuration: number | null, commentaryDuration: number | null) =>
   Math.ceil((answerDuration ?? 0) * FPS) + ANSWER_COMMENTARY_GAP_FRAMES + Math.ceil((commentaryDuration ?? 0) * FPS);
+
+export const answerDisplayFrames = (question: QuizQuestion, voice?: VoiceId, rate?: number) => {
+  const answerDuration = narrationAudio(question, "answer", voice, rate)?.duration ?? 0;
+  const commentaryDuration = question.answerCommentary.trim() ? narrationAudio(question, "commentary", voice, rate)?.duration ?? 0 : 0;
+  return Math.max(ANSWER_FRAMES, answerNarrationFrames(answerDuration, commentaryDuration));
+};
 
 export const transitionFramesAfter = (questions: QuizQuestion[], index: number) => {
   return index < questions.length - 1 ? TRANSITION_FRAMES : 0;
@@ -286,27 +334,39 @@ export const introductionSlides = (project: QuizProject) => [
   ...project.introductionImages,
 ].filter((image): image is string => Boolean(image));
 
+export const introductionNarration = (project: QuizProject) => project.introductionVoiceSource === "recording"
+  ? project.introductionRecording ? { path: project.introductionRecording, duration: project.introductionRecordingDuration ?? 0 } : null
+  : project.introductionAudio && project.introductionAudioVoice === project.voice && project.introductionAudioRate === project.speechRate
+    ? { path: project.introductionAudio, duration: project.introductionAudioDuration ?? 0 }
+    : null;
+
+export const conclusionNarration = (project: QuizProject) => project.conclusionVoiceSource === "recording"
+  ? project.conclusionRecording ? { path: project.conclusionRecording, duration: project.conclusionRecordingDuration ?? 0 } : null
+  : project.conclusionAudio && project.conclusionAudioVoice === project.voice && project.conclusionAudioRate === project.speechRate
+    ? { path: project.conclusionAudio, duration: project.conclusionAudioDuration ?? 0 }
+    : null;
+
 export const introductionDurationFrames = (project: QuizProject) =>
-  Math.round(project.introductionDurationSeconds * FPS);
+  Math.max(Math.round(project.introductionDurationSeconds * FPS), Math.ceil((introductionNarration(project)?.duration ?? 0) * FPS));
 
 export const conclusionDurationFrames = (project: QuizProject) =>
-  project.conclusionText.trim() || project.conclusionBackgroundImage || project.conclusionMusic || project.conclusionImage || project.conclusionImage2 || project.conclusionImage3
-    ? Math.round(project.conclusionDurationSeconds * FPS)
+  project.conclusionText.trim() || project.conclusionBackgroundImage || project.conclusionMusic || project.conclusionImage || project.conclusionImage2 || project.conclusionImage3 || project.conclusionRecording || project.conclusionAudio
+    ? Math.max(Math.round(project.conclusionDurationSeconds * FPS), Math.ceil((conclusionNarration(project)?.duration ?? 0) * FPS))
     : 0;
 
-export const questionStartFrame = (questions: QuizQuestion[], index: number, introFrames = INTRODUCTION_FRAMES) => {
+export const questionStartFrame = (questions: QuizQuestion[], index: number, introFrames = INTRODUCTION_FRAMES, voice?: VoiceId, rate?: number) => {
   let frame = introFrames + INTRODUCTION_QUESTION_GAP_FRAMES;
   for (let previous = 0; previous < index; previous += 1) {
-    frame += questionDurationFrames(questions[previous]) + ANSWER_FRAMES + transitionFramesAfter(questions, previous);
+    frame += questionDurationFrames(questions[previous], voice, rate) + answerDisplayFrames(questions[previous], voice, rate) + transitionFramesAfter(questions, previous);
   }
   return frame;
 };
 
-export const questionVideoDuration = (questions: QuizQuestion[], introFrames = INTRODUCTION_FRAMES, conclusionFrames = 0) =>
+export const questionVideoDuration = (questions: QuizQuestion[], introFrames = INTRODUCTION_FRAMES, conclusionFrames = 0, voice?: VoiceId, rate?: number) =>
   questions.length === 0
     ? introFrames + INTRODUCTION_QUESTION_GAP_FRAMES + FPS + conclusionFrames
     : introFrames + questions.reduce((duration, _question, index) =>
-      duration + questionDurationFrames(_question) + ANSWER_FRAMES + transitionFramesAfter(questions, index), INTRODUCTION_QUESTION_GAP_FRAMES) + conclusionFrames;
+      duration + questionDurationFrames(_question, voice, rate) + answerDisplayFrames(_question, voice, rate) + transitionFramesAfter(questions, index), INTRODUCTION_QUESTION_GAP_FRAMES) + conclusionFrames;
 
 export const slugify = (value: string) =>
   value
@@ -358,6 +418,15 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
       questionAudioDuration: typeof row.questionAudioDuration === "number" ? row.questionAudioDuration : null,
       answerAudioDuration: typeof row.answerAudioDuration === "number" ? row.answerAudioDuration : null,
       commentaryAudioDuration: typeof row.commentaryAudioDuration === "number" ? row.commentaryAudioDuration : null,
+      questionRecording: typeof row.questionRecording === "string" ? row.questionRecording : null,
+      questionRecordingDuration: typeof row.questionRecordingDuration === "number" ? Math.max(0, row.questionRecordingDuration) : null,
+      answerRecording: typeof row.answerRecording === "string" ? row.answerRecording : null,
+      answerRecordingDuration: typeof row.answerRecordingDuration === "number" ? Math.max(0, row.answerRecordingDuration) : null,
+      commentaryRecording: typeof row.commentaryRecording === "string" ? row.commentaryRecording : null,
+      commentaryRecordingDuration: typeof row.commentaryRecordingDuration === "number" ? Math.max(0, row.commentaryRecordingDuration) : null,
+      questionVoiceSource: row.questionVoiceSource === "recording" || (!row.questionVoiceSource && row.questionRecording) ? "recording" : "ai",
+      answerVoiceSource: row.answerVoiceSource === "recording" || (!row.answerVoiceSource && row.answerRecording) ? "recording" : "ai",
+      commentaryVoiceSource: row.commentaryVoiceSource === "recording" || (!row.commentaryVoiceSource && row.commentaryRecording) ? "recording" : "ai",
     });
   }
 
@@ -428,6 +497,9 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
     introductionAudioDuration: typeof value.introductionAudioDuration === "number" ? Math.max(0, value.introductionAudioDuration) : null,
     introductionAudioVoice: isVoiceId(value.introductionAudioVoice) ? value.introductionAudioVoice : null,
     introductionAudioRate: typeof value.introductionAudioRate === "number" ? value.introductionAudioRate : null,
+    introductionRecording: typeof value.introductionRecording === "string" ? value.introductionRecording : null,
+    introductionRecordingDuration: typeof value.introductionRecordingDuration === "number" ? Math.max(0, value.introductionRecordingDuration) : null,
+    introductionVoiceSource: value.introductionVoiceSource === "recording" || (!value.introductionVoiceSource && value.introductionRecording) ? "recording" : "ai",
     conclusionText: typeof value.conclusionText === "string" ? value.conclusionText.slice(0, 1000) : "",
     conclusionBackgroundImage: typeof value.conclusionBackgroundImage === "string" ? value.conclusionBackgroundImage : null,
     conclusionMusic: typeof value.conclusionMusic === "string" ? value.conclusionMusic : null,
@@ -447,6 +519,9 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
     conclusionAudioDuration: typeof value.conclusionAudioDuration === "number" ? Math.max(0, value.conclusionAudioDuration) : null,
     conclusionAudioVoice: isVoiceId(value.conclusionAudioVoice) ? value.conclusionAudioVoice : null,
     conclusionAudioRate: typeof value.conclusionAudioRate === "number" ? value.conclusionAudioRate : null,
+    conclusionRecording: typeof value.conclusionRecording === "string" ? value.conclusionRecording : null,
+    conclusionRecordingDuration: typeof value.conclusionRecordingDuration === "number" ? Math.max(0, value.conclusionRecordingDuration) : null,
+    conclusionVoiceSource: value.conclusionVoiceSource === "recording" || (!value.conclusionVoiceSource && value.conclusionRecording) ? "recording" : "ai",
     introductionImages: Array.isArray(value.introductionImages)
       ? value.introductionImages.filter((image): image is string => typeof image === "string").slice(0, 60)
       : [],

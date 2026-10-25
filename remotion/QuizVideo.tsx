@@ -18,6 +18,10 @@ import {
   questionVideoDuration,
   questionStartFrame,
   questionDurationFrames,
+  answerDisplayFrames,
+  narrationAudio,
+  introductionNarration,
+  conclusionNarration,
   transitionFramesAfter,
   type ConclusionLayer,
   type QuizQuestion,
@@ -73,9 +77,9 @@ const Illustration: React.FC<{ image: string | null }> = ({ image }) => {
   );
 };
 
-const QuestionAnswerCard: React.FC<{ question: QuizQuestion; number: number; frame: number; questionFrames: number }> = ({ question, number, frame, questionFrames }) => {
+const QuestionAnswerCard: React.FC<{ question: QuizQuestion; number: number; frame: number; questionFrames: number; answerFrames: number }> = ({ question, number, frame, questionFrames, answerFrames }) => {
   const questionAlpha = frame < questionFrames ? interpolate(frame, [0, 22], [0, 1], { extrapolateRight: "clamp" }) : 0;
-  const answerAlpha = interpolate(frame, [questionFrames, questionFrames + 12, questionFrames + ANSWER_FRAMES], [0, 1, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const answerAlpha = interpolate(frame, [questionFrames, questionFrames + 12, questionFrames + answerFrames], [0, 1, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   const glow = interpolate(frame, [questionFrames, questionFrames + 16, questionFrames + 36], [0, 24, 8], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   const scale = interpolate(frame, [0, 22], [1.025, 1], { extrapolateRight: "clamp" });
   const answerOffset = interpolate(frame, [questionFrames, questionFrames + 12], [10, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
@@ -321,27 +325,56 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
   const introFrames = introductionDurationFrames(project);
   const hasFullQuiz = questionOffset === 0 && questions.length === project.questions.length;
   const outroFrames = hasFullQuiz ? conclusionDurationFrames(project) : 0;
-  const conclusionStartFrame = questionVideoDuration(questions, introFrames);
+  const conclusionStartFrame = questionVideoDuration(questions, introFrames, 0, project.voice, project.speechRate);
   const isConclusion = outroFrames > 0 && frame >= conclusionStartFrame;
   const conclusionLocalFrame = frame - conclusionStartFrame;
   const musicVolume = project.musicVolume / 100;
   const musicCrossfadeFrames = Math.max(1, Math.round(0.7 * fps));
+  const narrationIntervals = [
+    ...(introductionNarration(project) ? [{ start: 0, end: Math.ceil(introductionNarration(project)!.duration * fps), musicDuck: project.introductionVoiceSource === "ai" }] : []),
+    ...questions.flatMap((item, index) => {
+      const start = questionStartFrame(questions, index, introFrames, project.voice, project.speechRate);
+      const q = narrationAudio(item, "question", project.voice, project.speechRate);
+      const a = narrationAudio(item, "answer", project.voice, project.speechRate);
+      const c = item.answerCommentary.trim() ? narrationAudio(item, "commentary", project.voice, project.speechRate) : null;
+      const questionEnd = start + questionDurationFrames(item, project.voice, project.speechRate);
+      return [
+        q && { start, end: start + Math.ceil(q.duration * fps), musicDuck: item.questionVoiceSource === "ai" },
+        a && { start: questionEnd, end: questionEnd + Math.ceil(a.duration * fps), musicDuck: item.answerVoiceSource === "ai" },
+        c && { start: questionEnd + Math.ceil((a?.duration ?? 0) * fps) + ANSWER_COMMENTARY_GAP_FRAMES, end: questionEnd + Math.ceil((a?.duration ?? 0) * fps) + ANSWER_COMMENTARY_GAP_FRAMES + Math.ceil(c.duration * fps), musicDuck: item.commentaryVoiceSource === "ai" },
+      ].filter((interval): interval is { start: number; end: number; musicDuck: boolean } => Boolean(interval));
+    }),
+    ...(hasFullQuiz && conclusionNarration(project) ? [{ start: conclusionStartFrame, end: conclusionStartFrame + Math.ceil(conclusionNarration(project)!.duration * fps), musicDuck: project.conclusionVoiceSource === "ai" }] : []),
+  ];
+  const voiceDuckAt = (absoluteFrame: number, musicOnly = false) => {
+    const fade = Math.max(1, Math.round(0.25 * fps));
+    let amount = 0;
+    for (const interval of narrationIntervals) {
+      if (musicOnly && !interval.musicDuck) continue;
+      const inFade = interpolate(absoluteFrame, [interval.start - fade, interval.start], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) });
+      const outFade = interpolate(absoluteFrame, [interval.end, interval.end + fade], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) });
+      amount = Math.max(amount, inFade * outFade);
+    }
+    return amount;
+  };
+  const duckedVolume = (absoluteFrame: number, volume: number, musicOnly = false) => volume * (1 - voiceDuckAt(absoluteFrame, musicOnly) * 0.82);
   const themeMusicVolumeAt = (audioFrame: number) => !hasFullQuiz || !project.conclusionMusic
     ? musicVolume
     : interpolate(audioFrame, [conclusionStartFrame, conclusionStartFrame + musicCrossfadeFrames], [musicVolume, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) });
   const isOpeningTheme = frame < introFrames;
   const introFadeOutFrames = Math.max(1, Math.round(introFrames * 0.6 / 20));
   const questionsFrame = Math.max(0, frame - introFrames);
-  const matchingIndex = questions.findIndex((_item, index) => questionsFrame < questionStartFrame(questions, index + 1, introFrames) - introFrames);
+  const matchingIndex = questions.findIndex((_item, index) => questionsFrame < questionStartFrame(questions, index + 1, introFrames, project.voice, project.speechRate) - introFrames);
   const activeIndex = matchingIndex < 0 ? questions.length - 1 : matchingIndex;
-  const questionStart = questionStartFrame(questions, activeIndex, introFrames);
+  const questionStart = questionStartFrame(questions, activeIndex, introFrames, project.voice, project.speechRate);
   const localFrame = frame - questionStart;
   const hasQuestionStarted = localFrame >= 0;
   const question = questions[Math.max(0, activeIndex)];
   const nextQuestion = questions[activeIndex + 1];
   const isLast = activeIndex === questions.length - 1;
-  const questionFrames = questionDurationFrames(question);
-  const transitionStart = questionFrames + ANSWER_FRAMES;
+  const questionFrames = questionDurationFrames(question, project.voice, project.speechRate);
+  const answerFrames = answerDisplayFrames(question, project.voice, project.speechRate);
+  const transitionStart = questionFrames + answerFrames;
   const isTransitioning = localFrame >= transitionStart && !isLast;
   const questionNumber = questionOffset + activeIndex + 1;
   const isHourglassTransitionVariation = isTransitioning && Boolean(nextQuestion) && questionNumber % 8 === 0 && !nextQuestion?.startsTheme;
@@ -356,33 +389,34 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
     <div style={{ width: 1920, height: 1080, overflow: "hidden", position: "relative", background: "#101b14", fontFamily: "Arial, sans-serif" }}>
       {project.backgroundMusic && <Sequence from={0} layout="none"><Audio src={toPublicUrl(project.backgroundMusic)} loop volume={themeMusicVolumeAt} /></Sequence>}
       {hasFullQuiz && outroFrames > 0 && project.conclusionMusic && <Sequence from={conclusionStartFrame} durationInFrames={outroFrames} layout="none"><Audio src={toPublicUrl(project.conclusionMusic)} loop volume={(audioFrame) => interpolate(audioFrame, [0, musicCrossfadeFrames], [0, project.conclusionMusicVolume / 100], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) })} /></Sequence>}
-      {project.introductionAudio && <Sequence from={0} durationInFrames={Math.max(1, Math.ceil((project.introductionAudioDuration ?? 25) * FPS))} layout="none"><Audio src={toPublicUrl(project.introductionAudio)} volume={project.voiceVolume / 100} /></Sequence>}
-      {hasFullQuiz && project.conclusionAudio && project.conclusionAudioVoice === project.voice && project.conclusionAudioRate === project.speechRate && <Sequence from={conclusionStartFrame} durationInFrames={Math.max(1, Math.ceil((project.conclusionAudioDuration ?? 8) * FPS))} layout="none"><Audio src={toPublicUrl(project.conclusionAudio)} volume={project.voiceVolume / 100} /></Sequence>}
-      {questions.map((item, index) => (
-        <Sequence key={`voice-question-${item.id}`} from={questionStartFrame(questions, index, introFrames)} durationInFrames={Math.max(1, Math.ceil((item.questionAudioDuration ?? 15) * FPS))} layout="none">
-          {item.questionAudio && item.questionAudioVoice === project.voice && item.questionAudioRate === project.speechRate ? <Audio src={toPublicUrl(item.questionAudio)} volume={project.voiceVolume / 100} /> : null}
-        </Sequence>
-      ))}
+      {introductionNarration(project) && <Sequence from={0} durationInFrames={Math.max(1, Math.ceil(introductionNarration(project)!.duration * fps))} layout="none"><Audio src={toPublicUrl(introductionNarration(project)!.path)} volume={project.voiceVolume / 100} /></Sequence>}
+      {hasFullQuiz && conclusionNarration(project) && <Sequence from={conclusionStartFrame} durationInFrames={Math.max(1, Math.ceil(conclusionNarration(project)!.duration * fps))} layout="none"><Audio src={toPublicUrl(conclusionNarration(project)!.path)} volume={project.voiceVolume / 100} /></Sequence>}
+      {questions.map((item, index) => {
+        const narration = narrationAudio(item, "question", project.voice, project.speechRate);
+        const start = questionStartFrame(questions, index, introFrames, project.voice, project.speechRate);
+        return narration ? <Sequence key={`voice-question-${item.id}`} from={start} durationInFrames={Math.max(1, Math.ceil(narration.duration * fps))} layout="none"><Audio src={toPublicUrl(narration.path)} volume={project.voiceVolume / 100} /></Sequence> : null;
+      })}
       {project.countdownSound && questions.map((item, index) => (
-        <Sequence key={`countdown-sound-${item.id}`} from={questionStartFrame(questions, index, introFrames) + questionDurationFrames(item) - 3 * FPS} durationInFrames={3 * FPS} layout="none">
-          <Audio src={toPublicUrl(project.countdownSound!)} loop volume={project.countdownSoundVolume / 100} />
+        <Sequence key={`countdown-sound-${item.id}`} from={questionStartFrame(questions, index, introFrames, project.voice, project.speechRate) + questionDurationFrames(item, project.voice, project.speechRate) - 3 * FPS} durationInFrames={3 * FPS} layout="none">
+          <Audio src={toPublicUrl(project.countdownSound!)} loop volume={(audioFrame) => duckedVolume(questionStartFrame(questions, index, introFrames, project.voice, project.speechRate) + questionDurationFrames(item, project.voice, project.speechRate) - 3 * FPS + audioFrame, project.countdownSoundVolume / 100)} />
         </Sequence>
       ))}
       {project.answerSound && questions.map((item, index) => (
-        <Sequence key={`answer-sound-${item.id}`} from={questionStartFrame(questions, index, introFrames) + questionDurationFrames(item)} durationInFrames={ANSWER_FRAMES} layout="none">
+        <Sequence key={`answer-sound-${item.id}`} from={questionStartFrame(questions, index, introFrames, project.voice, project.speechRate) + questionDurationFrames(item, project.voice, project.speechRate)} durationInFrames={ANSWER_FRAMES} layout="none">
           <Audio src={toPublicUrl(project.answerSound!)} volume={project.answerSoundVolume / 100} />
         </Sequence>
       ))}
-      {questions.map((item, index) => (
-        <Sequence key={`voice-answer-${item.id}`} from={questionStartFrame(questions, index, introFrames) + questionDurationFrames(item)} durationInFrames={Math.max(1, Math.ceil((item.answerAudioDuration ?? 4) * FPS))} layout="none">
-          {item.answerAudio && item.answerAudioVoice === project.voice && item.answerAudioRate === project.speechRate ? <Audio src={toPublicUrl(item.answerAudio)} volume={project.voiceVolume / 100} /> : null}
-        </Sequence>
-      ))}
-      {questions.map((item, index) => (
-        <Sequence key={`voice-commentary-${item.id}`} from={questionStartFrame(questions, index, introFrames) + questionDurationFrames(item) + Math.ceil((item.answerAudioDuration ?? 0) * FPS) + ANSWER_COMMENTARY_GAP_FRAMES} durationInFrames={Math.max(1, Math.ceil((item.commentaryAudioDuration ?? 4) * FPS))} layout="none">
-          {item.commentaryAudio && item.commentaryAudioVoice === project.voice && item.commentaryAudioRate === project.speechRate ? <Audio src={toPublicUrl(item.commentaryAudio)} volume={project.voiceVolume / 100} /> : null}
-        </Sequence>
-      ))}
+      {questions.map((item, index) => {
+        const narration = narrationAudio(item, "answer", project.voice, project.speechRate);
+        const from = questionStartFrame(questions, index, introFrames, project.voice, project.speechRate) + questionDurationFrames(item, project.voice, project.speechRate);
+        return narration ? <Sequence key={`voice-answer-${item.id}`} from={from} durationInFrames={Math.max(1, Math.ceil(narration.duration * fps))} layout="none"><Audio src={toPublicUrl(narration.path)} volume={project.voiceVolume / 100} /></Sequence> : null;
+      })}
+      {questions.map((item, index) => {
+        const answer = narrationAudio(item, "answer", project.voice, project.speechRate);
+        const narration = item.answerCommentary.trim() ? narrationAudio(item, "commentary", project.voice, project.speechRate) : null;
+        const from = questionStartFrame(questions, index, introFrames, project.voice, project.speechRate) + questionDurationFrames(item, project.voice, project.speechRate) + Math.ceil((answer?.duration ?? 0) * fps) + ANSWER_COMMENTARY_GAP_FRAMES;
+        return narration ? <Sequence key={`voice-commentary-${item.id}`} from={from} durationInFrames={Math.max(1, Math.ceil(narration.duration * fps))} layout="none"><Audio src={toPublicUrl(narration.path)} volume={project.voiceVolume / 100} /></Sequence> : null;
+      })}
       {isOpeningTheme
         ? <>
           <Backdrop image={project.background} opacity={frame >= introFrames - introFadeOutFrames ? 1 : 0} />
@@ -390,8 +424,8 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
         </>
         : isConclusion ? null : <Backdrop image={project.background} />}
       {!isConclusion && hasQuestionStarted && localFrame < questionFrames && <Illustration image={question.image} />}
-      {!isConclusion && hasQuestionStarted && localFrame >= questionFrames && localFrame < questionFrames + ANSWER_FRAMES && <Illustration image={question.answerImage || (question.keepImageOnAnswer ? question.image : null)} />}
-      {!isConclusion && hasQuestionStarted && localFrame < questionFrames + ANSWER_FRAMES && <QuestionAnswerCard question={question} number={questionNumber} frame={localFrame} questionFrames={questionFrames} />}
+      {!isConclusion && hasQuestionStarted && localFrame >= questionFrames && localFrame < questionFrames + answerFrames && <Illustration image={question.answerImage || (question.keepImageOnAnswer ? question.image : null)} />}
+      {!isConclusion && hasQuestionStarted && localFrame < questionFrames + answerFrames && <QuestionAnswerCard question={question} number={questionNumber} frame={localFrame} questionFrames={questionFrames} answerFrames={answerFrames} />}
       {!isConclusion && hasQuestionStarted && localFrame < questionFrames && <Timer frame={localFrame} duration={questionFrames} />}
       {localFrame >= transitionStart && !isLast && nextQuestion && (
         isNewTheme && nextTheme?.image

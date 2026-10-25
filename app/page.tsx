@@ -4,10 +4,12 @@ import { Player, type PlayerRef } from "@remotion/player";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  answerNarrationFrames,
+  answerDisplayFrames,
   conclusionDurationFrames,
+  conclusionNarration,
   defaultProject,
   introductionDurationFrames,
+  introductionNarration,
   INTRODUCTION_QUESTION_GAP_FRAMES,
   FPS,
   MAX_INTRODUCTION_SECONDS,
@@ -19,6 +21,7 @@ import {
   MAX_QUESTIONS,
   parseQuizCsv,
   questionDurationFrames,
+  narrationAudio,
   questionVideoDuration,
   transitionFramesAfter,
   type QuizProject,
@@ -30,6 +33,7 @@ import {
 import { QuizVideo } from "@/remotion/QuizVideo";
 import { ConclusionEditor, type ConclusionImageId } from "./ConclusionEditor";
 import { IntroductionEditor } from "./IntroductionEditor";
+import { VoiceRecorder } from "./VoiceRecorder";
 import "./studio.css";
 
 type RenderStatus = {
@@ -215,6 +219,20 @@ export default function Home() {
     finally { setMediaBusy(""); }
   }, []);
 
+  const saveRecording = useCallback(async (blob: Blob, duration: number, onSaved: (path: string, duration: number) => void) => {
+    setMediaBusy("voice-recording"); setFeedback("");
+    try {
+      const body = new FormData();
+      body.set("file", new File([blob], "recording", { type: blob.type || "audio/webm" }));
+      body.set("duration", String(duration));
+      const response = await fetch("/api/recordings", { method: "POST", body });
+      const result = await response.json() as { path?: string; error?: string };
+      if (!response.ok || !result.path) throw new Error(result.error || "La prise n’a pas pu être sauvegardée.");
+      onSaved(result.path, duration); setFeedback(`Enregistrement conservé (${duration.toFixed(1)} s).`);
+    } catch (error) { setFeedback(error instanceof Error ? error.message : "La prise n’a pas pu être sauvegardée."); throw error; }
+    finally { setMediaBusy(""); }
+  }, []);
+
   const uploadIntroductionLayer = (id: IntroductionLayerId, file: File) => {
     void uploadImage(file, (image) => setProject((current) => ({
       ...current,
@@ -337,14 +355,10 @@ export default function Home() {
     if (!response.ok) throw new Error(result.error || "La voix n’a pas pu être générée.");
     if (part === "question") {
       updateQuestion(index, { questionAudio: result.audio, questionAudioVoice: project.voice, questionAudioRate: project.speechRate, questionAudioDuration: result.duration });
-      const availableSeconds = questionDurationFrames(question) / 30;
-      if (result.duration > availableSeconds) setFeedback(`La narration de la question ${index + 1} dure ${result.duration.toFixed(1)} s, au-delà des ${availableSeconds} s disponibles.`);
     } else if (part === "answer") {
       updateQuestion(index, { answerAudio: result.audio, answerAudioVoice: project.voice, answerAudioRate: project.speechRate, answerAudioDuration: result.duration });
-      if (result.duration > 4) setFeedback(`La narration de la réponse ${index + 1} dure ${result.duration.toFixed(1)} s, au-delà des 4 s disponibles.`);
     } else {
       updateQuestion(index, { commentaryAudio: result.audio, commentaryAudioVoice: project.voice, commentaryAudioRate: project.speechRate, commentaryAudioDuration: result.duration });
-      if (answerNarrationFrames(question.answerAudioDuration, result.duration) > 4 * 30) setFeedback(`La réponse, la pause d’une seconde et le commentaire dépassent les 4 s d’affichage. Raccourcissez le commentaire.`);
     }
     return result;
   }, [project, updateQuestion]);
@@ -372,9 +386,8 @@ export default function Home() {
     const result = await response.json() as GeneratedVoice & { error?: string };
     if (!response.ok) throw new Error(result.error || "La voix de la conclusion n’a pas pu être générée.");
     updateProject({ conclusionAudio: result.audio, conclusionAudioDuration: result.duration, conclusionAudioVoice: project.voice, conclusionAudioRate: project.speechRate });
-    if (result.duration > project.conclusionDurationSeconds) setFeedback(`La narration de conclusion dure ${result.duration.toFixed(1)} s, au-delà des ${project.conclusionDurationSeconds} s prévues.`);
     return result;
-  }, [project.conclusionText, project.conclusionDurationSeconds, project.speechRate, project.voice, updateProject]);
+  }, [project.conclusionText, project.speechRate, project.voice, updateProject]);
 
   const generateIntroductionVoice = async () => {
     setVoiceBusy(true); setFeedback("");
@@ -396,21 +409,23 @@ export default function Home() {
 
   const generateAllVoices = async () => {
     setVoiceBusy(true); setFeedback(""); let complete = 0;
-    const total = project.questions.length * 2 + project.questions.filter((question) => question.answerCommentary.trim()).length + Number(Boolean(project.introductionText.trim())) + Number(Boolean(project.conclusionText.trim()));
+    const total = project.questions.reduce((sum, question) => sum + Number(Boolean(question.prompt.trim() && !question.questionRecording)) + Number(Boolean(question.answer.trim() && !question.answerRecording)) + Number(Boolean(question.answerCommentary.trim() && !question.commentaryRecording)), Number(Boolean(project.introductionText.trim() && !project.introductionRecording)) + Number(Boolean(project.conclusionText.trim() && !project.conclusionRecording)));
     try {
-      if (project.introductionText.trim()) {
+      if (project.introductionText.trim() && !project.introductionRecording) {
         setVoiceProgress(`Voix ${complete + 1} sur ${total} · introduction`);
         await synthesizeIntroduction(); complete += 1;
       }
       for (let index = 0; index < project.questions.length; index += 1) {
-        const parts: Array<"question" | "answer" | "commentary"> = ["question", "answer"];
-        if (project.questions[index].answerCommentary.trim()) parts.push("commentary");
+        const parts: Array<"question" | "answer" | "commentary"> = [];
+        if (!project.questions[index].questionRecording) parts.push("question");
+        if (!project.questions[index].answerRecording) parts.push("answer");
+        if (project.questions[index].answerCommentary.trim() && !project.questions[index].commentaryRecording) parts.push("commentary");
         for (const part of parts) {
           setVoiceProgress(`Voix ${complete + 1} sur ${total} · question ${index + 1}`);
           await generateVoice(index, part); complete += 1;
         }
       }
-      if (project.conclusionText.trim()) {
+      if (project.conclusionText.trim() && !project.conclusionRecording) {
         setVoiceProgress(`Voix ${complete + 1} sur ${total} · conclusion`);
         await synthesizeConclusion(); complete += 1;
       }
@@ -421,7 +436,7 @@ export default function Home() {
 
   const generateQuestionVoices = async (index: number) => {
     setVoiceBusy(true); setFeedback("");
-      try { await generateVoice(index, "question"); await generateVoice(index, "answer"); if (project.questions[index].answerCommentary.trim()) await generateVoice(index, "commentary"); setFeedback(`Les voix de la question ${index + 1} sont prêtes.`); }
+      try { const question = project.questions[index]; await generateVoice(index, "question"); await generateVoice(index, "answer"); if (question.answerCommentary.trim()) await generateVoice(index, "commentary"); setFeedback(`Les voix IA de la question ${index + 1} sont prêtes. Choisissez IA ou Micro dans chaque source.`); }
     catch (error) { setFeedback(error instanceof Error ? error.message : "Une narration n’a pas pu être générée."); }
     finally { setVoiceBusy(false); }
   };
@@ -429,12 +444,10 @@ export default function Home() {
   const startRender = async (scope: "all" | "question", index = 0) => {
     const selected = scope === "all" ? project.questions : [project.questions[index]];
     if (selected.some((question) => !question?.prompt.trim() || !question?.answer.trim())) { setFeedback(scope === "all" ? "Complétez toutes les questions et leurs réponses avant l’export." : `Complétez la question ${index + 1} et sa réponse avant l’export.`); return; }
-    if (!introVoiceReady) { setFeedback("Générez la narration de l’introduction avec la voix et la vitesse sélectionnées."); navigate("introduction"); return; }
-    if ((project.introductionAudioDuration ?? 0) > project.introductionDurationSeconds) { setFeedback("La narration d’introduction dépasse la durée choisie. Raccourcissez le texte puis régénérez la voix."); navigate("introduction"); return; }
-    const conclusionVoiceReady = !project.conclusionText.trim() || Boolean(project.conclusionAudio && project.conclusionAudioVoice === project.voice && project.conclusionAudioRate === project.speechRate);
-    if (scope === "all" && !conclusionVoiceReady) { setFeedback("Générez la narration de conclusion avec la voix et la vitesse sélectionnées."); navigate("conclusion"); return; }
-    if (scope === "all" && (project.conclusionAudioDuration ?? 0) > project.conclusionDurationSeconds) { setFeedback("La narration de conclusion dépasse la durée choisie. Raccourcissez le texte puis régénérez la voix."); navigate("conclusion"); return; }
-    const audioReady = selected.every((question) => question.questionAudio && question.answerAudio && question.questionAudioVoice === project.voice && question.answerAudioVoice === project.voice && question.questionAudioRate === project.speechRate && question.answerAudioRate === project.speechRate && (question.questionAudioDuration ?? 16) <= questionDurationFrames(question) / 30 && (question.answerAudioDuration ?? 5) <= 4 && (!question.answerCommentary.trim() || (question.commentaryAudio && question.commentaryAudioVoice === project.voice && question.commentaryAudioRate === project.speechRate && answerNarrationFrames(question.answerAudioDuration, question.commentaryAudioDuration) <= 4 * 30)));
+    if (!introVoiceReady) { setFeedback("Choisissez une voix disponible pour l’introduction, ou enregistrez-la."); navigate("introduction"); return; }
+    const conclusionVoiceReady = !project.conclusionText.trim() || Boolean(conclusionNarration(project));
+    if (scope === "all" && !conclusionVoiceReady) { setFeedback("Enregistrez la narration ou générez la voix IA de conclusion."); navigate("conclusion"); return; }
+    const audioReady = selected.every((question) => narrationAudio(question, "question", project.voice, project.speechRate) && narrationAudio(question, "answer", project.voice, project.speechRate) && (!question.answerCommentary.trim() || narrationAudio(question, "commentary", project.voice, project.speechRate)));
     if (!audioReady) { setFeedback("Générez les voix manquantes avec la voix sélectionnée. Les commentaires saisis doivent aussi avoir leur narration."); navigate("voix"); return; }
     setRenderStarting(true); setRenderStatus(null); setFeedback("");
     try {
@@ -469,13 +482,13 @@ export default function Home() {
   const navigate = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   const visibleQuestions = previewQuestion === "all" ? project.questions : [project.questions[previewQuestion]];
   const questionOffset = previewQuestion === "all" ? 0 : previewQuestion;
-  const introVoiceReady = !project.introductionText.trim() || Boolean(project.introductionAudio && project.introductionAudioVoice === project.voice && project.introductionAudioRate === project.speechRate);
-  const conclusionVoiceReady = !project.conclusionText.trim() || Boolean(project.conclusionAudio && project.conclusionAudioVoice === project.voice && project.conclusionAudioRate === project.speechRate);
-  const voiceTotal = project.questions.length * 2 + project.questions.filter((question) => question.answerCommentary.trim()).length + Number(Boolean(project.introductionText.trim())) + Number(Boolean(project.conclusionText.trim()));
+  const introVoiceReady = !project.introductionText.trim() || Boolean(introductionNarration(project));
+  const conclusionVoiceReady = !project.conclusionText.trim() || Boolean(conclusionNarration(project));
+  const voiceTotal = project.questions.length * 2 + project.questions.filter((question) => question.answerCommentary.trim() || question.commentaryRecording || question.commentaryAudio).length + Number(Boolean(project.introductionText.trim() || project.introductionRecording || project.introductionAudio)) + Number(Boolean(project.conclusionText.trim() || project.conclusionRecording || project.conclusionAudio));
   const previewConclusionFrames = previewQuestion === "all" ? conclusionDurationFrames(project) : 0;
-  const previewDuration = questionVideoDuration(visibleQuestions, introductionDurationFrames(project), previewConclusionFrames);
-  const voiceFilesCount = project.questions.reduce((total, question) => total + Number(Boolean(question.questionAudio)) + Number(Boolean(question.answerAudio)) + Number(Boolean(question.commentaryAudio)), Number(Boolean(project.introductionAudio)) + Number(Boolean(project.conclusionAudio)));
-  const previewKey = `${previewQuestion === "all" ? "all" : `question-${previewQuestion}`}-${project.voiceVolume}-${project.countdownSound || "no-countdown-sound"}-${project.countdownSoundVolume}-${project.answerSound || "no-answer-sound"}-${project.answerSoundVolume}-${project.conclusionMusic || "theme-music"}-${project.conclusionMusicVolume}`;
+  const previewDuration = questionVideoDuration(visibleQuestions, introductionDurationFrames(project), previewConclusionFrames, project.voice, project.speechRate);
+  const voiceFilesCount = project.questions.reduce((total, question) => total + Number(Boolean(question.questionRecording || question.questionAudio)) + Number(Boolean(question.answerRecording || question.answerAudio)) + Number(Boolean(question.commentaryRecording || question.commentaryAudio)), Number(Boolean(project.introductionRecording || project.introductionAudio)) + Number(Boolean(project.conclusionRecording || project.conclusionAudio)));
+  const previewKey = `${previewQuestion === "all" ? "all" : `question-${previewQuestion}`}-${project.voiceVolume}-${project.countdownSound || "no-countdown-sound"}-${project.countdownSoundVolume}-${project.answerSound || "no-answer-sound"}-${project.answerSoundVolume}-${project.conclusionMusic || "theme-music"}-${project.conclusionMusicVolume}-${project.introductionRecording || ""}-${project.conclusionRecording || ""}-${project.questions.map((q) => `${q.questionRecording || ""}:${q.answerRecording || ""}:${q.commentaryRecording || ""}`).join("|")}`;
   const questionRanges = Array.from({ length: Math.ceil(project.questions.length / 10) }, (_, index) => {
     const start = index * 10;
     return { start, end: Math.min(start + 10, project.questions.length) };
@@ -487,6 +500,7 @@ export default function Home() {
         <a href="#accueil" className="sidebar-brand"><span className="brand-glyph" aria-hidden="true">AQ</span><span><strong>L’Atelier Quiz</strong><small>STUDIO LOCAL</small></span></a>
         <div className="sidebar-label">CRÉATION</div>
         <nav className="side-nav" aria-label="Sections du studio">
+          <button className="side-nav-link" onClick={() => window.location.assign("/studio-vocal")}><span aria-hidden="true">🎙</span> Studio vocal</button>
           <button className="side-nav-link" onClick={() => navigate("introduction")}><span>01</span> Introduction</button>
           <div className="side-nav-group">
             <button className="side-nav-link side-nav-group-trigger" aria-expanded={openNavGroup === "musiques"} onClick={() => setOpenNavGroup((current) => current === "musiques" ? null : "musiques")}><span>02</span> Musiques &amp; sons <i>{openNavGroup === "musiques" ? "−" : "+"}</i></button>
@@ -531,7 +545,7 @@ export default function Home() {
           </section>
 
           <section className="countdown-audio-panel answer-sound-panel" id="son-reponses" aria-label="Son des bonnes réponses">
-            <div className="countdown-audio-copy"><strong>SON DES BONNES RÉPONSES</strong><small>Joué en même temps que la voix pendant les 4 secondes d’affichage de chaque réponse.</small></div>
+            <div className="countdown-audio-copy"><strong>SON DES BONNES RÉPONSES</strong><small>Joué une fois au début de chaque réponse ; la voix peut prolonger son affichage au-delà de 4 secondes.</small></div>
             <label className="upload-button">{mediaBusy === "answer-sound" ? "Import…" : project.answerSound ? "Remplacer le son" : "Importer un son"}<input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/wave,audio/x-wav,audio/mp4,audio/x-m4a,audio/aac,audio/ogg,audio/webm,.mp3,.wav,.m4a,.aac,.ogg,.webm" disabled={Boolean(mediaBusy)} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadAnswerSound(file); event.currentTarget.value = ""; }} /></label>
             {project.answerSound && <button className="text-button" onClick={() => updateProject({ answerSound: null })}>Retirer</button>}
             {project.answerSound && <><button type="button" className="countdown-preview-button" onClick={() => void previewAnswerSound()}>{answerSoundPreviewPlaying ? "■ Arrêter l’écoute" : "▶ Écouter le son"}</button><audio ref={answerSoundAudioRef} className="countdown-audio-source" preload="metadata" src={assetUrl(project.answerSound) || undefined} onPlay={() => setAnswerSoundPreviewPlaying(true)} onPause={() => setAnswerSoundPreviewPlaying(false)} onEnded={() => setAnswerSoundPreviewPlaying(false)} aria-label="Aperçu du son des bonnes réponses" /></>}
@@ -554,26 +568,26 @@ export default function Home() {
                   onUploadLayer={uploadIntroductionLayer}
                   onUpdateLayers={updateIntroductionLayers}
                 />
-                <div className="intro-voice-row"><span className={introVoiceReady && project.introductionAudio ? "voice-done" : project.introductionText.trim() ? "voice-missing" : "voice-done"}>{project.introductionAudio && introVoiceReady ? `Voix prête · ${project.introductionAudioDuration?.toFixed(1)} s` : project.introductionText.trim() ? "Voix à générer" : "Ajoutez un texte pour créer la voix"}</span><button className="generate-one" disabled={voiceBusy || !project.introductionText.trim()} onClick={() => void generateIntroductionVoice()}>{voiceBusy ? "Génération…" : project.introductionAudio ? "Régénérer la voix" : "Générer la voix d’introduction"}</button></div>
+                <div className="intro-voice-row"><span className={introVoiceReady ? "voice-done" : project.introductionText.trim() ? "voice-missing" : "voice-done"}>{project.introductionVoiceSource === "recording" && project.introductionRecording ? `Micro sélectionné · ${project.introductionRecordingDuration?.toFixed(1)} s` : project.introductionAudio && introVoiceReady ? `Voix IA sélectionnée · ${project.introductionAudioDuration?.toFixed(1)} s` : project.introductionText.trim() ? "Choisissez IA ou Micro ci-dessous" : "Ajoutez un texte pour créer la voix"}</span><button className="generate-one" disabled={voiceBusy || !project.introductionText.trim()} onClick={() => void generateIntroductionVoice()}>{voiceBusy ? "Génération…" : project.introductionAudio ? "Régénérer la voix IA" : "Générer la voix IA"}</button></div>
                 {project.introductionAudio && <audio className="intro-audio-preview" controls preload="none" src={assetUrl(project.introductionAudio) || undefined} aria-label="Écouter la narration de l’introduction" />}
+                <VoiceRecorder label="Narration de l’introduction" path={project.introductionRecording} duration={project.introductionRecordingDuration} source={project.introductionVoiceSource} aiAvailable={Boolean(project.introductionAudio && project.introductionAudioVoice === project.voice && project.introductionAudioRate === project.speechRate)} onSourceChange={(introductionVoiceSource) => updateProject({ introductionVoiceSource })} busy={mediaBusy === "voice-recording"} onSave={(blob, duration) => saveRecording(blob, duration, (introductionRecording, introductionRecordingDuration) => updateProject({ introductionRecording, introductionRecordingDuration, introductionVoiceSource: "recording" }))} onDelete={() => updateProject({ introductionRecording: null, introductionRecordingDuration: null, introductionVoiceSource: "ai" })} />
               </section>
               <section className="panel questions-panel" id="questions">
                 <div className="panel-heading"><div><span className="panel-step">03</span><div><h2>Questions &amp; réponses</h2><p>Ajoutez jusqu’à 60 questions ; le rythme reste identique pour chacune.</p></div></div><div className="question-count">{project.questions.length}<small> / {MAX_QUESTIONS}</small></div></div>
-                <div className="timing-strip"><span><b className="timing-cream">{project.introductionDurationSeconds} s</b> introduction</span><i>→</i><span><b className="timing-green">2 s</b> pause</span><i>→</i><span><b className="timing-gold">10 ou 15 s</b> question</span><i>→</i><span><b className="timing-cream">4 s</b> réponse</span><i>→</i><span><b className="timing-green">2 s</b> pause</span></div>
+                <div className="timing-strip"><span><b className="timing-cream">{(introductionDurationFrames(project) / FPS).toFixed(1)} s</b> introduction</span><i>→</i><span><b className="timing-green">2 s</b> pause</span><i>→</i><span><b className="timing-gold">10 ou 15 s + voix</b> question</span><i>→</i><span><b className="timing-cream">4 s minimum</b> réponse &amp; commentaire</span><i>→</i><span><b className="timing-green">2 s</b> pause</span></div>
                 <div className="question-list">
                   {project.questions.map((question, index) => {
-                    const questionReady = question.questionAudio && question.questionAudioVoice === project.voice && question.questionAudioRate === project.speechRate;
-                    const answerReady = question.answerAudio && question.answerAudioVoice === project.voice && question.answerAudioRate === project.speechRate;
-                    const questionSeconds = questionDurationFrames(question) / 30;
-                    const qTooLong = Boolean(question.questionAudioDuration && question.questionAudioDuration > questionSeconds);
-                    const aTooLong = Boolean(question.answerAudioDuration && question.answerAudioDuration > 4);
+                    const questionReady = Boolean(narrationAudio(question, "question", project.voice, project.speechRate));
+                    const answerReady = Boolean(narrationAudio(question, "answer", project.voice, project.speechRate));
+                    const questionSeconds = questionDurationFrames(question, project.voice, project.speechRate) / 30;
+                    const answerSeconds = answerDisplayFrames(question, project.voice, project.speechRate) / 30;
                     return (
                       <article className="question-card" key={question.id} id={`question-${index + 1}`}>
-                        <div className="question-card-top"><div className="number-badge">{String(index + 1).padStart(2, "0")}</div><div className="question-card-title"><strong>Question {index + 1}</strong><small>{questionSeconds} s + 4 s réponse{question.answerCommentary.trim() ? ` · commentaire lu pendant la réponse` : ""}{index < project.questions.length - 1 ? " + 2 s de pause" : ""}</small></div><button className={`preview-small ${previewQuestion === index ? "selected" : ""}`} onClick={() => { setPreviewQuestion(index); navigate("preview"); }} title={`Prévisualiser la question ${index + 1}`}><span>▶</span> Aperçu</button></div>
+                        <div className="question-card-top"><div className="number-badge">{String(index + 1).padStart(2, "0")}</div><div className="question-card-title"><strong>Question {index + 1}</strong><small>{questionSeconds} s + {answerSeconds} s réponse{question.answerCommentary.trim() ? ` · commentaire lu` : ""}{index < project.questions.length - 1 ? " + 2 s de pause" : ""}</small></div><button className={`preview-small ${previewQuestion === index ? "selected" : ""}`} onClick={() => { setPreviewQuestion(index); navigate("preview"); }} title={`Prévisualiser la question ${index + 1}`}><span>▶</span> Aperçu</button></div>
                         <label className="field-label">TITRE À L’ÉCRAN <span>FACULTATIF</span><input value={question.title} maxLength={100} placeholder={`Question ${index + 1}`} onChange={(event) => updateQuestion(index, { title: event.target.value })} /></label>
                         <label className="field-label">QUESTION <span>OBLIGATOIRE · {questionSeconds} SECONDES · {question.title.length + question.prompt.length} CARACTÈRES À L’ÉCRAN</span><textarea value={question.prompt} maxLength={1000} rows={2} placeholder="Écrivez la question à deviner…" onChange={(event) => updateQuestion(index, { prompt: event.target.value })} /></label>
                         <label className="checkbox-line timer-override"><input type="checkbox" checked={question.force15Seconds} onChange={(event) => updateQuestion(index, { force15Seconds: event.target.checked })} /><span>Forcer le compte à rebours à 15 secondes · les questions de plus de 150 caractères restent automatiquement à 15 secondes</span></label>
-                        <label className="field-label">RÉPONSE <span>OBLIGATOIRE · AFFICHÉE 4 SECONDES</span><textarea value={question.answer} maxLength={500} rows={2} placeholder="Écrivez la réponse à révéler…" onChange={(event) => updateQuestion(index, { answer: event.target.value })} /></label>
+                        <label className="field-label">RÉPONSE <span>OBLIGATOIRE · 4 SECONDES MINIMUM, PROLONGÉE SI LA VOIX EST PLUS LONGUE</span><textarea value={question.answer} maxLength={500} rows={2} placeholder="Écrivez la réponse à révéler…" onChange={(event) => updateQuestion(index, { answer: event.target.value })} /></label>
                         <label className="field-label">COMMENTAIRE PENDANT L’AFFICHAGE DE LA RÉPONSE <span>FACULTATIF · 1 S DE PAUSE AVANT SA LECTURE</span><textarea value={question.answerCommentary} maxLength={1000} rows={2} placeholder="Ajoutez une explication, une anecdote ou un commentaire…" onChange={(event) => updateQuestion(index, { answerCommentary: event.target.value, commentaryAudio: null, commentaryAudioDuration: null, commentaryAudioVoice: null, commentaryAudioRate: null })} /></label>
                         <div className="question-assets">
                           <div className="question-image-group">
@@ -606,11 +620,16 @@ export default function Home() {
                           </>}
                         </div>}
                         <div className="question-voice-row"><div className="voice-status-list">
-                          <span className={questionReady ? "voice-done" : "voice-missing"}>{questionReady ? "●" : "○"} Voix question{qTooLong ? <em className="duration-warning"> · {question.questionAudioDuration?.toFixed(1)} s</em> : question.questionAudioDuration ? <em> · {question.questionAudioDuration.toFixed(1)} s</em> : null}</span>
-                          <span className={answerReady ? "voice-done" : "voice-missing"}>{answerReady ? "●" : "○"} Voix réponse{aTooLong ? <em className="duration-warning"> · {question.answerAudioDuration?.toFixed(1)} s</em> : question.answerAudioDuration ? <em> · {question.answerAudioDuration.toFixed(1)} s</em> : null}</span>
-                          {question.answerCommentary.trim() && <span className={question.commentaryAudio && question.commentaryAudioVoice === project.voice && question.commentaryAudioRate === project.speechRate && answerNarrationFrames(question.answerAudioDuration, question.commentaryAudioDuration) <= 4 * 30 ? "voice-done" : "voice-missing"}>{question.commentaryAudio && question.commentaryAudioVoice === project.voice && question.commentaryAudioRate === project.speechRate && answerNarrationFrames(question.answerAudioDuration, question.commentaryAudioDuration) <= 4 * 30 ? "●" : "○"} Voix commentaire{question.commentaryAudioDuration ? <em className={answerNarrationFrames(question.answerAudioDuration, question.commentaryAudioDuration) > 4 * 30 ? "duration-warning" : ""}> · {question.commentaryAudioDuration.toFixed(1)} s{answerNarrationFrames(question.answerAudioDuration, question.commentaryAudioDuration) > 4 * 30 ? " · trop long avec la pause et la réponse" : ""}</em> : null}</span>}
-                        </div><button className="generate-one" disabled={voiceBusy || !question.prompt.trim() || !question.answer.trim()} onClick={() => void generateQuestionVoices(index)}>{voiceBusy ? "Génération…" : question.answerCommentary.trim() ? "Générer les voix" : "Générer les deux voix"}</button></div>
-                        <div className="audio-previews">{question.questionAudio && <audio controls preload="none" src={assetUrl(question.questionAudio) || undefined} aria-label={`Écouter la voix de la question ${index + 1}`} />}{question.answerAudio && <audio controls preload="none" src={assetUrl(question.answerAudio) || undefined} aria-label={`Écouter la voix de la réponse ${index + 1}`} />}{question.commentaryAudio && <audio controls preload="none" src={assetUrl(question.commentaryAudio) || undefined} aria-label={`Écouter le commentaire de la question ${index + 1}`} />}</div>
+                          <span className={questionReady ? "voice-done" : "voice-missing"}>{questionReady ? "●" : "○"} Voix question{question.questionRecordingDuration ? <em> · {question.questionRecordingDuration.toFixed(1)} s · micro</em> : question.questionAudioDuration ? <em> · {question.questionAudioDuration.toFixed(1)} s</em> : null}</span>
+                          <span className={answerReady ? "voice-done" : "voice-missing"}>{answerReady ? "●" : "○"} Voix réponse{question.answerRecordingDuration ? <em> · {question.answerRecordingDuration.toFixed(1)} s · micro</em> : question.answerAudioDuration ? <em> · {question.answerAudioDuration.toFixed(1)} s</em> : null}</span>
+                          {question.answerCommentary.trim() && <span className={narrationAudio(question, "commentary", project.voice, project.speechRate) ? "voice-done" : "voice-missing"}>{narrationAudio(question, "commentary", project.voice, project.speechRate) ? "●" : "○"} Voix commentaire{question.commentaryRecordingDuration ? <em> · {question.commentaryRecordingDuration.toFixed(1)} s · micro</em> : question.commentaryAudioDuration ? <em> · {question.commentaryAudioDuration.toFixed(1)} s</em> : null}</span>}
+                        </div><button className="generate-one" disabled={voiceBusy || !question.prompt.trim() || !question.answer.trim()} onClick={() => void generateQuestionVoices(index)}>{voiceBusy ? "Génération…" : question.answerCommentary.trim() ? "Générer les voix IA" : "Générer les deux voix IA"}</button></div>
+                        <div className="recording-grid">
+                          <VoiceRecorder label="Question" path={question.questionRecording} duration={question.questionRecordingDuration} source={question.questionVoiceSource} aiAvailable={Boolean(question.questionAudio && question.questionAudioVoice === project.voice && question.questionAudioRate === project.speechRate)} onSourceChange={(questionVoiceSource) => updateQuestion(index, { questionVoiceSource })} busy={mediaBusy === "voice-recording"} onSave={(blob, duration) => saveRecording(blob, duration, (questionRecording, questionRecordingDuration) => updateQuestion(index, { questionRecording, questionRecordingDuration, questionVoiceSource: "recording" }))} onDelete={() => updateQuestion(index, { questionRecording: null, questionRecordingDuration: null, questionVoiceSource: "ai" })} />
+                          <VoiceRecorder label="Réponse" path={question.answerRecording} duration={question.answerRecordingDuration} source={question.answerVoiceSource} aiAvailable={Boolean(question.answerAudio && question.answerAudioVoice === project.voice && question.answerAudioRate === project.speechRate)} onSourceChange={(answerVoiceSource) => updateQuestion(index, { answerVoiceSource })} busy={mediaBusy === "voice-recording"} onSave={(blob, duration) => saveRecording(blob, duration, (answerRecording, answerRecordingDuration) => updateQuestion(index, { answerRecording, answerRecordingDuration, answerVoiceSource: "recording" }))} onDelete={() => updateQuestion(index, { answerRecording: null, answerRecordingDuration: null, answerVoiceSource: "ai" })} />
+                          {question.answerCommentary.trim() && <VoiceRecorder label="Commentaire" path={question.commentaryRecording} duration={question.commentaryRecordingDuration} source={question.commentaryVoiceSource} aiAvailable={Boolean(question.commentaryAudio && question.commentaryAudioVoice === project.voice && question.commentaryAudioRate === project.speechRate)} onSourceChange={(commentaryVoiceSource) => updateQuestion(index, { commentaryVoiceSource })} busy={mediaBusy === "voice-recording"} onSave={(blob, duration) => saveRecording(blob, duration, (commentaryRecording, commentaryRecordingDuration) => updateQuestion(index, { commentaryRecording, commentaryRecordingDuration, commentaryVoiceSource: "recording" }))} onDelete={() => updateQuestion(index, { commentaryRecording: null, commentaryRecordingDuration: null, commentaryVoiceSource: "ai" })} />}
+                        </div>
+                        <div className="audio-previews">{question.questionAudio && <audio controls preload="none" src={assetUrl(question.questionAudio) || undefined} aria-label={`Écouter la voix IA de la question ${index + 1}`} />}{question.answerAudio && <audio controls preload="none" src={assetUrl(question.answerAudio) || undefined} aria-label={`Écouter la voix IA de la réponse ${index + 1}`} />}{question.commentaryAudio && <audio controls preload="none" src={assetUrl(question.commentaryAudio) || undefined} aria-label={`Écouter le commentaire IA de la question ${index + 1}`} />}</div>
                       </article>
                     );
                   })}
@@ -631,9 +650,9 @@ export default function Home() {
                   <div className="decor-field logo-field"><div className="decor-preview logo-preview">{project.logo ? <Image src={assetUrl(project.logo) || ""} alt="Logo original importé" width={800} height={400} unoptimized /> : <span className="empty-state"><b>LOGO</b>Import facultatif</span>}</div><div className="decor-controls"><div><strong>Logo original</strong><small>Ajouté en calque indépendant</small></div><label className="upload-button">{mediaBusy === "logo" ? "Import…" : project.logo ? "Remplacer" : "Importer"}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={Boolean(mediaBusy)} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(file, (logo) => updateProject({ logo }), "logo"); event.currentTarget.value = ""; }} /></label>{project.logo && <button className="text-button" onClick={() => updateProject({ logo: null })}>Retirer</button>}</div></div>
                 </div>
                 <div className="music-field" id="musique-theme">
-                  <div className="music-heading"><div><strong>MUSIQUE DE FOND · TOUT LE QUIZ</strong><small>Une seule piste en boucle, comme le fond global. Volume automatiquement réduit pendant les narrations.</small></div><label className="upload-button">{mediaBusy === "background-music" ? "Import…" : project.backgroundMusic ? "Remplacer la musique" : "Importer une musique"}<input type="file" accept="audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/aac,audio/ogg,audio/webm,.mp3,.wav,.m4a,.aac,.ogg,.webm" disabled={Boolean(mediaBusy)} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadMusic(file); event.currentTarget.value = ""; }} /></label>{project.backgroundMusic && <button className="text-button" onClick={() => updateProject({ backgroundMusic: null })}>Retirer</button>}</div>
+                  <div className="music-heading"><div><strong>MUSIQUE DE FOND · TOUT LE QUIZ</strong><small>La musique baisse pendant les voix IA ; elle reste au volume réglé pendant les prises micro.</small></div><label className="upload-button">{mediaBusy === "background-music" ? "Import…" : project.backgroundMusic ? "Remplacer la musique" : "Importer une musique"}<input type="file" accept="audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/aac,audio/ogg,audio/webm,.mp3,.wav,.m4a,.aac,.ogg,.webm" disabled={Boolean(mediaBusy)} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadMusic(file); event.currentTarget.value = ""; }} /></label>{project.backgroundMusic && <button className="text-button" onClick={() => updateProject({ backgroundMusic: null })}>Retirer</button>}</div>
                   {project.backgroundMusic && <div className="music-controls"><audio controls preload="metadata" src={assetUrl(project.backgroundMusic) || undefined} /><Slider label="Volume de la musique" value={project.musicVolume} min={0} max={100} unit=" %" onChange={(musicVolume) => updateProject({ musicVolume })} /></div>}
-                  <p>La musique passe au volume choisi pendant l’introduction et les transitions, puis descend à 18 % de ce réglage pendant les voix.</p>
+                  <p>La musique de fond et celle de conclusion conservent leur réglage pendant les prises micro. Le ducking progressif à 18 % reste appliqué aux voix IA.</p>
                 </div>
                 <p className="panel-note">Le fond global est importé une fois et partagé par toutes les questions par défaut. Les exceptions se règlent dans chaque question ; les originaux restent inchangés.</p>
               </section>
@@ -642,7 +661,7 @@ export default function Home() {
                 <div className="panel-heading"><div><span className="panel-step">04</span><div><h2>Voix off française</h2><p>{voiceFilesCount} narration{voiceFilesCount > 1 ? "s" : ""} sur {voiceTotal} · réutilisation du cache local</p></div></div></div>
                 <div className="voice-controls"><label className="field-label">VOIX<select value={project.voice} onChange={(event) => { if (isVoiceId(event.target.value)) updateProject({ voice: event.target.value }); }}>{VOICES.map((voice) => <option value={voice.id} key={voice.id}>{voice.label} — {voice.gender}</option>)}</select></label><Slider label="Vitesse" value={project.speechRate} min={80} max={120} unit=" %" onChange={(speechRate) => updateProject({ speechRate })} /><Slider label="Volume de la voix" value={project.voiceVolume} min={0} max={100} unit=" %" onChange={(voiceVolume) => updateProject({ voiceVolume })} /></div>
                 <div className="voice-disclosure"><span>i</span><div><strong>Synthèse vocale locale · aucun texte envoyé</strong><p>Piper génère des voix neurales françaises sur ce PC. Le premier lancement nécessite une seule installation des modèles dans le dossier du projet ; les narrations WAV sont ensuite conservées localement et réutilisées.</p></div></div>
-                <div className="voice-footer"><button className="button-gold" disabled={voiceBusy || !loaded} onClick={() => void generateAllVoices()}><span>✦</span> Générer les {voiceTotal} narrations</button><span>{voiceBusy ? voiceProgress : "Les narrations trop longues sont signalées après mesure de l’audio."}</span></div>
+                <div className="voice-footer"><button className="button-gold" disabled={voiceBusy || !loaded} onClick={() => void generateAllVoices()}><span>✦</span> Générer les voix IA manquantes</button><span>{voiceBusy ? voiceProgress : "Les prises micro sont conservées localement. Les séquences s’allongent si une voix dépasse leur durée prévue."}</span></div>
               </section>
 
               <section className="panel conclusion-panel" id="conclusion">
@@ -664,8 +683,9 @@ export default function Home() {
                   <div className="music-heading"><div><strong>MUSIQUE DE CONCLUSION</strong><small>{project.conclusionMusic ? "Cette piste remplacera la musique du thème pendant la conclusion." : "Sans piste dédiée, la musique du thème continuera pendant la conclusion."}</small></div><label className="upload-button">{mediaBusy === "conclusion-music" ? "Import…" : project.conclusionMusic ? "Remplacer la musique" : "Importer une musique"}<input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/wave,audio/x-wav,audio/mp4,audio/x-m4a,audio/aac,audio/ogg,audio/webm,.mp3,.wav,.m4a,.aac,.ogg,.webm" disabled={Boolean(mediaBusy)} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadConclusionMusic(file); event.currentTarget.value = ""; }} /></label>{project.conclusionMusic && <button className="text-button" onClick={() => updateProject({ conclusionMusic: null })}>Retirer</button>}</div>
                   {project.conclusionMusic && <><div className="conclusion-music-preview-row"><button type="button" className="countdown-preview-button" onClick={() => void previewConclusionMusic()}>{conclusionMusicPreviewPlaying ? "■ Arrêter l’écoute" : "▶ Écouter la musique"}</button><span>Le niveau de l’aperçu suit cette jauge.</span><audio ref={conclusionMusicAudioRef} className="countdown-audio-source" preload="metadata" src={assetUrl(project.conclusionMusic) || undefined} onPlay={() => setConclusionMusicPreviewPlaying(true)} onPause={() => setConclusionMusicPreviewPlaying(false)} onEnded={() => setConclusionMusicPreviewPlaying(false)} aria-label="Aperçu de la musique de conclusion" /></div><Slider label="Volume de la musique de conclusion" value={project.conclusionMusicVolume} min={0} max={100} unit=" %" onChange={updateConclusionMusicVolume} /></>}
                 </div>
-                <div className="intro-voice-row"><span className={conclusionVoiceReady && project.conclusionAudio ? "voice-done" : project.conclusionText.trim() ? "voice-missing" : "voice-done"}>{project.conclusionAudio && conclusionVoiceReady ? `Voix prête · ${project.conclusionAudioDuration?.toFixed(1)} s` : project.conclusionText.trim() ? "Voix à générer" : "Ajoutez un texte pour créer la voix"}</span><button className="generate-one" disabled={voiceBusy || !project.conclusionText.trim()} onClick={() => void generateConclusionVoice()}>{voiceBusy ? "Génération…" : project.conclusionAudio ? "Régénérer la voix" : "Générer la voix de conclusion"}</button></div>
+                <div className="intro-voice-row"><span className={conclusionVoiceReady ? "voice-done" : project.conclusionText.trim() ? "voice-missing" : "voice-done"}>{project.conclusionVoiceSource === "recording" && project.conclusionRecording ? `Micro sélectionné · ${project.conclusionRecordingDuration?.toFixed(1)} s` : project.conclusionAudio && conclusionVoiceReady ? `Voix IA sélectionnée · ${project.conclusionAudioDuration?.toFixed(1)} s` : project.conclusionText.trim() ? "Choisissez IA ou Micro ci-dessous" : "Ajoutez un texte pour créer la voix"}</span><button className="generate-one" disabled={voiceBusy || !project.conclusionText.trim()} onClick={() => void generateConclusionVoice()}>{voiceBusy ? "Génération…" : project.conclusionAudio ? "Régénérer la voix IA" : "Générer la voix IA"}</button></div>
                 {project.conclusionAudio && <audio className="intro-audio-preview" controls preload="none" src={assetUrl(project.conclusionAudio) || undefined} aria-label="Écouter la narration de conclusion" />}
+                <VoiceRecorder label="Narration de la conclusion" path={project.conclusionRecording} duration={project.conclusionRecordingDuration} source={project.conclusionVoiceSource} aiAvailable={Boolean(project.conclusionAudio && project.conclusionAudioVoice === project.voice && project.conclusionAudioRate === project.speechRate)} onSourceChange={(conclusionVoiceSource) => updateProject({ conclusionVoiceSource })} busy={mediaBusy === "voice-recording"} onSave={(blob, duration) => saveRecording(blob, duration, (conclusionRecording, conclusionRecordingDuration) => updateProject({ conclusionRecording, conclusionRecordingDuration, conclusionVoiceSource: "recording" }))} onDelete={() => updateProject({ conclusionRecording: null, conclusionRecordingDuration: null, conclusionVoiceSource: "ai" })} />
               </section>
             </div>
 
@@ -674,7 +694,7 @@ export default function Home() {
                 <div className="panel-heading preview-heading"><div><span className="panel-step">06</span><div><h2>Prévisualisation</h2><p>La composition Remotion sera rendue en MP4.</p></div></div><span className="resolution-chip">16:9</span></div>
                 <div className="preview-frame">{loaded ? <Player key={previewKey} ref={playerRef} component={QuizVideo} inputProps={{ project, questions: visibleQuestions, questionOffset }} durationInFrames={previewDuration} compositionWidth={1920} compositionHeight={1080} fps={30} controls clickToPlay loop={false} errorFallback={({ error }) => <div className="preview-error"><strong>Erreur de prévisualisation</strong><span>{error.message}</span></div>} style={{ width: "100%" }} /> : <div className="preview-loading">Ouverture du projet…</div>}</div>
                 <div className="preview-tools"><span>APERÇU</span><div className="preview-switches"><button className={previewQuestion === "all" ? "active" : ""} onClick={() => setPreviewQuestion("all")}>Tout le quiz</button>{project.questions.map((question, index) => <button className={previewQuestion === index ? "active" : ""} key={question.id} onClick={() => setPreviewQuestion(index)}>Q{index + 1}</button>)}</div><span>{(previewDuration / 30).toFixed(0)} s</span></div>
-                <div className="timeline" aria-label="Timeline du quiz"><div className="timeline-intro"><span>INTRO</span><i>{project.introductionDurationSeconds} s</i></div><div className="timeline-gap"><span>PAUSE</span><i>2 s</i></div>{project.questions.map((question, index) => <button key={question.id} className={`timeline-question ${previewQuestion === index ? "chosen" : ""}`} onClick={() => setPreviewQuestion(index)}>{question.startsTheme && <b title="Nouveau thème avant cette question">T ·</b>}<span>Q{index + 1}</span><i>{questionDurationFrames(question) / 30} s</i><i>4 s</i>{index < project.questions.length - 1 && <i>{transitionFramesAfter(project.questions, index) / 30} s</i>}</button>)}{previewQuestion === "all" && conclusionDurationFrames(project) > 0 && <div className="timeline-conclusion"><span>FIN</span><i>{project.conclusionDurationSeconds} s</i></div>}</div>
+                <div className="timeline" aria-label="Timeline du quiz"><div className="timeline-intro"><span>INTRO</span><i>{(introductionDurationFrames(project) / FPS).toFixed(1)} s</i></div><div className="timeline-gap"><span>PAUSE</span><i>2 s</i></div>{project.questions.map((question, index) => <button key={question.id} className={`timeline-question ${previewQuestion === index ? "chosen" : ""}`} onClick={() => setPreviewQuestion(index)}>{question.startsTheme && <b title="Nouveau thème avant cette question">T ·</b>}<span>Q{index + 1}</span><i>{questionDurationFrames(question, project.voice, project.speechRate) / FPS} s</i><i>{answerDisplayFrames(question, project.voice, project.speechRate) / FPS} s</i>{index < project.questions.length - 1 && <i>{transitionFramesAfter(project.questions, index) / 30} s</i>}</button>)}{previewQuestion === "all" && conclusionDurationFrames(project) > 0 && <div className="timeline-conclusion"><span>FIN</span><i>{(conclusionDurationFrames(project) / FPS).toFixed(1)} s</i></div>}</div>
               </section>
 
               <section className="panel export-panel" id="export">

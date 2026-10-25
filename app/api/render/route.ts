@@ -4,7 +4,7 @@ import path from "node:path";
 import { NextResponse } from "next/server";
 import { bundle } from "@remotion/bundler";
 import { renderMedia, selectComposition } from "@remotion/renderer";
-import { answerNarrationFrames, conclusionDurationFrames, introductionDurationFrames, normalizeProject, questionDurationFrames, questionVideoDuration, slugify, type QuizVideoProps } from "@/lib/quiz";
+import { conclusionDurationFrames, introductionDurationFrames, introductionNarration, conclusionNarration, narrationAudio, normalizeProject, questionVideoDuration, slugify, type QuizVideoProps } from "@/lib/quiz";
 import { renderJobs, type RenderJob } from "@/lib/render-jobs";
 import { ensureProjectFolders, saveProject, exportsDirectory } from "@/lib/storage";
 
@@ -72,7 +72,7 @@ async function render(job: RenderJob, project: NonNullable<ReturnType<typeof nor
   await renderMedia({
     composition: {
       ...composition,
-      durationInFrames: questionVideoDuration(selectedQuestions, introductionDurationFrames(project), scope === "all" ? conclusionDurationFrames(project) : 0),
+      durationInFrames: questionVideoDuration(selectedQuestions, introductionDurationFrames(project), scope === "all" ? conclusionDurationFrames(project) : 0, project.voice, project.speechRate),
       width: 1920,
       height: 1080,
       fps: 30,
@@ -111,35 +111,18 @@ export async function POST(request: Request) {
   if (selected.some((question) => !question.prompt.trim() || !question.answer.trim())) {
     return NextResponse.json({ error: scope === "all" ? "Complétez toutes les questions et leurs réponses avant le rendu." : `Complétez la question ${questionIndex + 1} et sa réponse avant le rendu.` }, { status: 400 });
   }
-  if (project.introductionText.trim() && (
-    !project.introductionAudio ||
-    project.introductionAudioVoice !== project.voice ||
-    project.introductionAudioRate !== project.speechRate
-  )) {
-    return NextResponse.json({ error: "Générez la narration de l’introduction avec la voix et la vitesse sélectionnées avant l’export." }, { status: 400 });
+  if (project.introductionText.trim() && !introductionNarration(project)) {
+    return NextResponse.json({ error: "Enregistrez la narration ou générez la voix IA de l’introduction avant l’export." }, { status: 400 });
   }
-  if ((project.introductionAudioDuration ?? 0) > project.introductionDurationSeconds) {
-    return NextResponse.json({ error: `La narration d’introduction doit tenir dans les ${project.introductionDurationSeconds} secondes choisies.` }, { status: 400 });
-  }
-  if (scope === "all" && project.conclusionText.trim() && (
-    !project.conclusionAudio ||
-    project.conclusionAudioVoice !== project.voice ||
-    project.conclusionAudioRate !== project.speechRate
-  )) {
-    return NextResponse.json({ error: "Générez la narration de conclusion avec la voix et la vitesse sélectionnées avant l’export." }, { status: 400 });
-  }
-  if (scope === "all" && (project.conclusionAudioDuration ?? 0) > project.conclusionDurationSeconds) {
-    return NextResponse.json({ error: `La narration de conclusion doit tenir dans les ${project.conclusionDurationSeconds} secondes choisies.` }, { status: 400 });
+  if (scope === "all" && project.conclusionText.trim() && !conclusionNarration(project)) {
+    return NextResponse.json({ error: "Enregistrez la narration ou générez la voix IA de conclusion avant l’export." }, { status: 400 });
   }
   const missingAudio = selected.some((question) =>
-    !question.questionAudio || !question.answerAudio ||
-    question.questionAudioVoice !== project.voice || question.answerAudioVoice !== project.voice ||
-    question.questionAudioRate !== project.speechRate || question.answerAudioRate !== project.speechRate ||
-    (question.questionAudioDuration ?? 16) > questionDurationFrames(question) / 30 || (question.answerAudioDuration ?? 5) > 4 ||
-    (question.answerCommentary.trim() && (!question.commentaryAudio || question.commentaryAudioVoice !== project.voice || question.commentaryAudioRate !== project.speechRate || answerNarrationFrames(question.answerAudioDuration, question.commentaryAudioDuration) > 4 * 30))
+    !narrationAudio(question, "question", project.voice, project.speechRate) || !narrationAudio(question, "answer", project.voice, project.speechRate) ||
+    (question.answerCommentary.trim() && !narrationAudio(question, "commentary", project.voice, project.speechRate))
   );
   if (missingAudio) {
-    return NextResponse.json({ error: "Générez les voix manquantes avec la voix et la vitesse sélectionnées. La question doit tenir dans son compte à rebours et la réponse dans les 4 secondes d’affichage." }, { status: 400 });
+    return NextResponse.json({ error: "Enregistrez ou générez les narrations manquantes des questions, réponses et commentaires." }, { status: 400 });
   }
   if ([...renderJobs.values()].some((item) => item.stage === "preparing" || item.stage === "rendering" || item.stage === "queued")) {
     return NextResponse.json({ error: "Un rendu est déjà en cours." }, { status: 409 });
