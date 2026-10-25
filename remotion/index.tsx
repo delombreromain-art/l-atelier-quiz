@@ -1,5 +1,5 @@
 import { Composition, registerRoot } from "remotion";
-import { defaultProject, introductionDurationFrames, questionVideoDuration, type QuizVideoProps } from "../lib/quiz";
+import { conclusionDurationFrames, defaultProject, introductionDurationFrames, questionVideoDuration, type QuizVideoProps } from "../lib/quiz";
 import { QuizVideo } from "./QuizVideo";
 
 const defaultProps: QuizVideoProps = {
@@ -15,9 +15,9 @@ const RemotionRoot: React.FC = () => (
     width={1920}
     height={1080}
     fps={30}
-    durationInFrames={questionVideoDuration(defaultProject.questions, introductionDurationFrames(defaultProject))}
+    durationInFrames={questionVideoDuration(defaultProject.questions, introductionDurationFrames(defaultProject), conclusionDurationFrames(defaultProject))}
     defaultProps={defaultProps}
-    calculateMetadata={({ props }) => ({ durationInFrames: questionVideoDuration(props.questions, introductionDurationFrames(props.project)) })}
+    calculateMetadata={({ props }) => ({ durationInFrames: questionVideoDuration(props.questions, introductionDurationFrames(props.project), props.questionOffset === 0 && props.questions.length === props.project.questions.length ? conclusionDurationFrames(props.project) : 0) })}
   />
 );
 

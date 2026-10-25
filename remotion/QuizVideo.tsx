@@ -13,10 +13,13 @@ import {
   ANSWER_COMMENTARY_GAP_FRAMES,
   FPS,
   THEME_FRAMES,
+  conclusionDurationFrames,
   introductionDurationFrames,
+  questionVideoDuration,
   questionStartFrame,
   questionDurationFrames,
   transitionFramesAfter,
+  type ConclusionLayer,
   type QuizQuestion,
   type IntroductionLayers,
   type QuizVideoProps,
@@ -196,10 +199,10 @@ const IntroductionComposition: React.FC<{ background: string | null; layers: Int
   const layerAnimations: Partial<Record<keyof IntroductionLayers, { start: number; duration: number; scale: number; rise: number; light?: boolean; shine?: number }>> = {
     logo: { start: 1, duration: 1.5, scale: 0.96, rise: 0, shine: 2.7 },
     questionsPanel: { start: 8, duration: 1.5, scale: 0.94, rise: 15, shine: 9.8 },
-    history: { start: 10, duration: 1.2, scale: 0.92, rise: 10, light: true },
-    geography: { start: 10, duration: 1.2, scale: 0.92, rise: 10, light: true },
-    science: { start: 10, duration: 1.2, scale: 0.92, rise: 10, light: true },
-    cinema: { start: 10, duration: 1.2, scale: 0.92, rise: 10, light: true },
+    history: { start: 11, duration: 1.2, scale: 0.92, rise: 10, light: true },
+    geography: { start: 11, duration: 1.2, scale: 0.92, rise: 10, light: true },
+    science: { start: 11, duration: 1.2, scale: 0.92, rise: 10, light: true },
+    cinema: { start: 11, duration: 1.2, scale: 0.92, rise: 10, light: true },
     hourglass: { start: 14, duration: 1, scale: 0.96, rise: 0, light: true },
   };
 
@@ -228,6 +231,45 @@ const IntroductionComposition: React.FC<{ background: string | null; layers: Int
             shineFrames={frames(1)}
           />;
         })}
+    </div>
+  );
+};
+
+const ConclusionComposition: React.FC<{ background: string | null; images: { source: string | null; layer: ConclusionLayer }[]; frame: number; durationFrames: number }> = ({ background, images, frame, durationFrames }) => {
+  const { fps } = useVideoConfig();
+  const durationScale = durationFrames / (10 * fps);
+  const at = (seconds: number) => Math.max(1, Math.round(seconds * fps * durationScale));
+  const backgroundScale = interpolate(frame, [0, durationFrames], [1, 1.015], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: Easing.inOut(Easing.sin),
+  });
+
+  return (
+    <div style={{ position: "absolute", zIndex: 30, inset: 0, overflow: "hidden", pointerEvents: "none" }}>
+      {background
+        ? <Img src={toPublicUrl(background)} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", transform: `scale(${backgroundScale})` }} />
+        : <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 50% 48%, #284034 0%, #14221b 58%, #0d1512 100%)" }} />}
+      {images.map(({ source, layer }, index) => source && <Img key={`conclusion-image-${index}`} src={toPublicUrl(source)} style={{
+        position: "absolute", left: layer.x, top: layer.y, width: layer.width, height: "auto", objectFit: "contain",
+        opacity: index === 0
+          ? interpolate(frame, [0, at(2)], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) })
+          : index === 2
+            ? interpolate(frame, [at(2), at(5)], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) })
+            : 1,
+        transform: index === 0
+          ? `scale(${interpolate(frame, [0, at(2)], [0.96, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) })})`
+          : index === 2
+            ? `translateY(${interpolate(frame, [at(2), at(5)], [15, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.quad) })}px) scale(${interpolate(frame, [at(2), at(5)], [0.97, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) })})`
+            : undefined,
+        transformOrigin: "center center",
+        filter: index === 0
+          ? `drop-shadow(0 0 ${interpolate(frame, [0, at(0.35), at(1.6), at(2)], [0, 3, 2, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) })}px #d9b34c99)`
+          : index === 2
+            ? `drop-shadow(0 0 ${interpolate(frame, [at(2), at(2.35), at(4.6), at(5)], [0, 3, 2, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) })}px #d9b34c99)`
+            : undefined,
+        zIndex: index + 1,
+      }} />)}
     </div>
   );
 };
@@ -275,7 +317,18 @@ const Timer: React.FC<{ frame: number; duration: number; displaySeconds?: boolea
 
 export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questionOffset }) => {
   const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
   const introFrames = introductionDurationFrames(project);
+  const hasFullQuiz = questionOffset === 0 && questions.length === project.questions.length;
+  const outroFrames = hasFullQuiz ? conclusionDurationFrames(project) : 0;
+  const conclusionStartFrame = questionVideoDuration(questions, introFrames);
+  const isConclusion = outroFrames > 0 && frame >= conclusionStartFrame;
+  const conclusionLocalFrame = frame - conclusionStartFrame;
+  const musicVolume = project.musicVolume / 100;
+  const musicCrossfadeFrames = Math.max(1, Math.round(0.7 * fps));
+  const themeMusicVolumeAt = (audioFrame: number) => !hasFullQuiz || !project.conclusionMusic
+    ? musicVolume
+    : interpolate(audioFrame, [conclusionStartFrame, conclusionStartFrame + musicCrossfadeFrames], [musicVolume, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) });
   const isOpeningTheme = frame < introFrames;
   const introFadeOutFrames = Math.max(1, Math.round(introFrames * 0.6 / 20));
   const questionsFrame = Math.max(0, frame - introFrames);
@@ -301,11 +354,23 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
   if (!question) return null;
   return (
     <div style={{ width: 1920, height: 1080, overflow: "hidden", position: "relative", background: "#101b14", fontFamily: "Arial, sans-serif" }}>
-      {project.backgroundMusic && <Sequence from={0} layout="none"><Audio src={toPublicUrl(project.backgroundMusic)} loop volume={project.musicVolume / 100} /></Sequence>}
+      {project.backgroundMusic && <Sequence from={0} layout="none"><Audio src={toPublicUrl(project.backgroundMusic)} loop volume={themeMusicVolumeAt} /></Sequence>}
+      {hasFullQuiz && outroFrames > 0 && project.conclusionMusic && <Sequence from={conclusionStartFrame} durationInFrames={outroFrames} layout="none"><Audio src={toPublicUrl(project.conclusionMusic)} loop volume={(audioFrame) => interpolate(audioFrame, [0, musicCrossfadeFrames], [0, musicVolume], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) })} /></Sequence>}
       {project.introductionAudio && <Sequence from={0} durationInFrames={Math.max(1, Math.ceil((project.introductionAudioDuration ?? 25) * FPS))} layout="none"><Audio src={toPublicUrl(project.introductionAudio)} volume={project.voiceVolume / 100} /></Sequence>}
+      {hasFullQuiz && project.conclusionAudio && project.conclusionAudioVoice === project.voice && project.conclusionAudioRate === project.speechRate && <Sequence from={conclusionStartFrame} durationInFrames={Math.max(1, Math.ceil((project.conclusionAudioDuration ?? 8) * FPS))} layout="none"><Audio src={toPublicUrl(project.conclusionAudio)} volume={project.voiceVolume / 100} /></Sequence>}
       {questions.map((item, index) => (
         <Sequence key={`voice-question-${item.id}`} from={questionStartFrame(questions, index, introFrames)} durationInFrames={Math.max(1, Math.ceil((item.questionAudioDuration ?? 15) * FPS))} layout="none">
           {item.questionAudio && item.questionAudioVoice === project.voice && item.questionAudioRate === project.speechRate ? <Audio src={toPublicUrl(item.questionAudio)} volume={project.voiceVolume / 100} /> : null}
+        </Sequence>
+      ))}
+      {project.countdownSound && questions.map((item, index) => (
+        <Sequence key={`countdown-sound-${item.id}`} from={questionStartFrame(questions, index, introFrames) + questionDurationFrames(item) - 3 * FPS} durationInFrames={3 * FPS} layout="none">
+          <Audio src={toPublicUrl(project.countdownSound!)} loop volume={project.countdownSoundVolume / 100} />
+        </Sequence>
+      ))}
+      {project.answerSound && questions.map((item, index) => (
+        <Sequence key={`answer-sound-${item.id}`} from={questionStartFrame(questions, index, introFrames) + questionDurationFrames(item)} durationInFrames={ANSWER_FRAMES} layout="none">
+          <Audio src={toPublicUrl(project.answerSound!)} volume={project.answerSoundVolume / 100} />
         </Sequence>
       ))}
       {questions.map((item, index) => (
@@ -323,22 +388,23 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
           <Backdrop image={project.background} opacity={frame >= introFrames - introFadeOutFrames ? 1 : 0} />
           <IntroductionComposition background={project.introductionImage || project.background} layers={project.introductionLayers} durationFrames={introFrames} />
         </>
-        : <Backdrop image={project.background} />}
-      {hasQuestionStarted && localFrame < questionFrames && <Illustration image={question.image} />}
-      {hasQuestionStarted && localFrame >= questionFrames && localFrame < questionFrames + ANSWER_FRAMES && <Illustration image={question.answerImage || (question.keepImageOnAnswer ? question.image : null)} />}
-      {hasQuestionStarted && localFrame < questionFrames + ANSWER_FRAMES && <QuestionAnswerCard question={question} number={questionNumber} frame={localFrame} questionFrames={questionFrames} />}
-      {hasQuestionStarted && localFrame < questionFrames && <Timer frame={localFrame} duration={questionFrames} />}
+        : isConclusion ? null : <Backdrop image={project.background} />}
+      {!isConclusion && hasQuestionStarted && localFrame < questionFrames && <Illustration image={question.image} />}
+      {!isConclusion && hasQuestionStarted && localFrame >= questionFrames && localFrame < questionFrames + ANSWER_FRAMES && <Illustration image={question.answerImage || (question.keepImageOnAnswer ? question.image : null)} />}
+      {!isConclusion && hasQuestionStarted && localFrame < questionFrames + ANSWER_FRAMES && <QuestionAnswerCard question={question} number={questionNumber} frame={localFrame} questionFrames={questionFrames} />}
+      {!isConclusion && hasQuestionStarted && localFrame < questionFrames && <Timer frame={localFrame} duration={questionFrames} />}
       {localFrame >= transitionStart && !isLast && nextQuestion && (
         isNewTheme && nextTheme?.image
           ? <ThemeImageSequence image={nextTheme.image} frame={localFrame - transitionStart} duration={transitionFramesAfter(questions, activeIndex)} />
           : null
       )}
-      {isHourglassTransitionVariation && <Timer frame={questionFrames} duration={questionFrames} displaySeconds={false} transitionPulse={transitionProgress} />}
-      {!isOpeningTheme && <Logo source={project.logo} />}
-      {hasQuestionStarted && <div style={{ position: "absolute", zIndex: 20, bottom: 72, left: 64, color: "#e4c574", fontSize: 34, fontWeight: 700, letterSpacing: 5, lineHeight: 1, textShadow: "0 2px 10px #000" }}>{String(questionNumber).padStart(2, "0")} / {String(project.questions.length).padStart(2, "0")}</div>}
-      {!isOpeningTheme && <div style={{ position: "absolute", zIndex: 1, inset: 18, border: "1px solid #dfc27650" }} />}
-      {!isOpeningTheme && <div style={{ position: "absolute", zIndex: 1, top: 39, right: 47, width: 18, height: 18, borderTop: "1px solid #dfc27688", borderRight: "1px solid #dfc27688" }} />}
-      {!isOpeningTheme && <div style={{ position: "absolute", zIndex: 1, bottom: 39, left: 47, width: 18, height: 18, borderBottom: "1px solid #dfc27688", borderLeft: "1px solid #dfc27688" }} />}
+      {!isConclusion && isHourglassTransitionVariation && <Timer frame={questionFrames} duration={questionFrames} displaySeconds={false} transitionPulse={transitionProgress} />}
+      {!isOpeningTheme && !isConclusion && <Logo source={project.logo} />}
+      {!isConclusion && hasQuestionStarted && <div style={{ position: "absolute", zIndex: 20, bottom: 72, left: 64, color: "#e4c574", fontSize: 34, fontWeight: 700, letterSpacing: 5, lineHeight: 1, textShadow: "0 2px 10px #000" }}>{String(questionNumber).padStart(2, "0")} / {String(project.questions.length).padStart(2, "0")}</div>}
+      {!isOpeningTheme && !isConclusion && <div style={{ position: "absolute", zIndex: 1, inset: 18, border: "1px solid #dfc27650" }} />}
+      {!isOpeningTheme && !isConclusion && <div style={{ position: "absolute", zIndex: 1, top: 39, right: 47, width: 18, height: 18, borderTop: "1px solid #dfc27688", borderRight: "1px solid #dfc27688" }} />}
+      {!isOpeningTheme && !isConclusion && <div style={{ position: "absolute", zIndex: 1, bottom: 39, left: 47, width: 18, height: 18, borderBottom: "1px solid #dfc27688", borderLeft: "1px solid #dfc27688" }} />}
+      {isConclusion && <ConclusionComposition background={project.conclusionBackgroundImage} images={[{ source: project.conclusionImage, layer: project.conclusionLayer }, { source: project.conclusionImage2, layer: project.conclusionLayer2 }, { source: project.conclusionImage3, layer: project.conclusionLayer3 }]} frame={conclusionLocalFrame} durationFrames={outroFrames} />}
     </div>
   );
 };

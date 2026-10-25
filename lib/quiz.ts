@@ -9,6 +9,9 @@ export const THEME_FRAMES = 4 * FPS;
 export const DEFAULT_INTRODUCTION_SECONDS = 20;
 export const MIN_INTRODUCTION_SECONDS = 12;
 export const MAX_INTRODUCTION_SECONDS = 40;
+export const DEFAULT_CONCLUSION_SECONDS = 10;
+export const MIN_CONCLUSION_SECONDS = 4;
+export const MAX_CONCLUSION_SECONDS = 20;
 export const INTRODUCTION_FRAMES = DEFAULT_INTRODUCTION_SECONDS * FPS;
 export const INTRODUCTION_QUESTION_GAP_FRAMES = 2 * FPS;
 export const MAX_QUESTIONS = 60;
@@ -24,6 +27,10 @@ export type IntroductionLayer = {
   visible: boolean;
 };
 export type IntroductionLayers = Record<IntroductionLayerId, IntroductionLayer>;
+export type ConclusionLayer = { x: number; y: number; width: number };
+export const CONCLUSION_LAYER_DEFAULTS: ConclusionLayer = { x: 480, y: 240, width: 960 };
+export const CONCLUSION_LAYER_2_DEFAULTS: ConclusionLayer = { x: 1240, y: 380, width: 500 };
+export const CONCLUSION_LAYER_3_DEFAULTS: ConclusionLayer = { x: 180, y: 580, width: 480 };
 
 export const INTRODUCTION_LAYER_DEFAULTS: IntroductionLayers = {
   logo: { image: null, x: 600, y: 24, width: 720, zIndex: 1, visible: true },
@@ -72,10 +79,28 @@ export type QuizProject = {
   introductionAudioDuration: number | null;
   introductionAudioVoice: VoiceId | null;
   introductionAudioRate: number | null;
+  conclusionText: string;
+  conclusionBackgroundImage: string | null;
+  conclusionMusic: string | null;
+  conclusionImage: string | null;
+  conclusionLayer: ConclusionLayer;
+  conclusionImage2: string | null;
+  conclusionLayer2: ConclusionLayer;
+  conclusionImage3: string | null;
+  conclusionLayer3: ConclusionLayer;
+  conclusionDurationSeconds: number;
+  conclusionAudio: string | null;
+  conclusionAudioDuration: number | null;
+  conclusionAudioVoice: VoiceId | null;
+  conclusionAudioRate: number | null;
   introductionImages: string[];
   background: string | null;
   backgroundMusic: string | null;
   musicVolume: number;
+  countdownSound: string | null;
+  countdownSoundVolume: number;
+  answerSound: string | null;
+  answerSoundVolume: number;
   themeImage: string | null;
   logo: string | null;
   voice: VoiceId;
@@ -194,10 +219,28 @@ export const defaultProject: QuizProject = {
   introductionAudioDuration: null,
   introductionAudioVoice: null,
   introductionAudioRate: null,
+  conclusionText: "",
+  conclusionBackgroundImage: null,
+  conclusionMusic: null,
+  conclusionImage: null,
+  conclusionLayer: CONCLUSION_LAYER_DEFAULTS,
+  conclusionImage2: null,
+  conclusionLayer2: CONCLUSION_LAYER_2_DEFAULTS,
+  conclusionImage3: null,
+  conclusionLayer3: CONCLUSION_LAYER_3_DEFAULTS,
+  conclusionDurationSeconds: DEFAULT_CONCLUSION_SECONDS,
+  conclusionAudio: null,
+  conclusionAudioDuration: null,
+  conclusionAudioVoice: null,
+  conclusionAudioRate: null,
   introductionImages: [],
   background: null,
   backgroundMusic: null,
   musicVolume: 25,
+  countdownSound: null,
+  countdownSoundVolume: 65,
+  answerSound: null,
+  answerSoundVolume: 35,
   themeImage: null,
   logo: null,
   voice: "fr_FR-siwis-medium",
@@ -244,6 +287,11 @@ export const introductionSlides = (project: QuizProject) => [
 export const introductionDurationFrames = (project: QuizProject) =>
   Math.round(project.introductionDurationSeconds * FPS);
 
+export const conclusionDurationFrames = (project: QuizProject) =>
+  project.conclusionText.trim() || project.conclusionBackgroundImage || project.conclusionMusic || project.conclusionImage || project.conclusionImage2 || project.conclusionImage3
+    ? Math.round(project.conclusionDurationSeconds * FPS)
+    : 0;
+
 export const questionStartFrame = (questions: QuizQuestion[], index: number, introFrames = INTRODUCTION_FRAMES) => {
   let frame = introFrames + INTRODUCTION_QUESTION_GAP_FRAMES;
   for (let previous = 0; previous < index; previous += 1) {
@@ -252,11 +300,11 @@ export const questionStartFrame = (questions: QuizQuestion[], index: number, int
   return frame;
 };
 
-export const questionVideoDuration = (questions: QuizQuestion[], introFrames = INTRODUCTION_FRAMES) =>
+export const questionVideoDuration = (questions: QuizQuestion[], introFrames = INTRODUCTION_FRAMES, conclusionFrames = 0) =>
   questions.length === 0
-    ? introFrames + INTRODUCTION_QUESTION_GAP_FRAMES + FPS
+    ? introFrames + INTRODUCTION_QUESTION_GAP_FRAMES + FPS + conclusionFrames
     : introFrames + questions.reduce((duration, _question, index) =>
-      duration + questionDurationFrames(_question) + ANSWER_FRAMES + transitionFramesAfter(questions, index), INTRODUCTION_QUESTION_GAP_FRAMES);
+      duration + questionDurationFrames(_question) + ANSWER_FRAMES + transitionFramesAfter(questions, index), INTRODUCTION_QUESTION_GAP_FRAMES) + conclusionFrames;
 
 export const slugify = (value: string) =>
   value
@@ -332,6 +380,39 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
       visible: raw.visible !== false,
     }];
   })) as IntroductionLayers;
+  const conclusionLayerInput = value.conclusionLayer && typeof value.conclusionLayer === "object"
+    ? value.conclusionLayer as Partial<ConclusionLayer>
+    : {};
+  const conclusionWidth = typeof conclusionLayerInput.width === "number" && Number.isFinite(conclusionLayerInput.width)
+    ? Math.min(1920, Math.max(40, conclusionLayerInput.width))
+    : CONCLUSION_LAYER_DEFAULTS.width;
+  const conclusionLayer: ConclusionLayer = {
+    x: Math.min(1920 - conclusionWidth, Math.max(0, typeof conclusionLayerInput.x === "number" && Number.isFinite(conclusionLayerInput.x) ? conclusionLayerInput.x : CONCLUSION_LAYER_DEFAULTS.x)),
+    y: Math.min(1080, Math.max(0, typeof conclusionLayerInput.y === "number" && Number.isFinite(conclusionLayerInput.y) ? conclusionLayerInput.y : CONCLUSION_LAYER_DEFAULTS.y)),
+    width: conclusionWidth,
+  };
+  const conclusionLayer2Input = value.conclusionLayer2 && typeof value.conclusionLayer2 === "object"
+    ? value.conclusionLayer2 as Partial<ConclusionLayer>
+    : {};
+  const conclusionWidth2 = typeof conclusionLayer2Input.width === "number" && Number.isFinite(conclusionLayer2Input.width)
+    ? Math.min(1920, Math.max(40, conclusionLayer2Input.width))
+    : CONCLUSION_LAYER_2_DEFAULTS.width;
+  const conclusionLayer2: ConclusionLayer = {
+    x: Math.min(1920 - conclusionWidth2, Math.max(0, typeof conclusionLayer2Input.x === "number" && Number.isFinite(conclusionLayer2Input.x) ? conclusionLayer2Input.x : CONCLUSION_LAYER_2_DEFAULTS.x)),
+    y: Math.min(1080, Math.max(0, typeof conclusionLayer2Input.y === "number" && Number.isFinite(conclusionLayer2Input.y) ? conclusionLayer2Input.y : CONCLUSION_LAYER_2_DEFAULTS.y)),
+    width: conclusionWidth2,
+  };
+  const conclusionLayer3Input = value.conclusionLayer3 && typeof value.conclusionLayer3 === "object"
+    ? value.conclusionLayer3 as Partial<ConclusionLayer>
+    : {};
+  const conclusionWidth3 = typeof conclusionLayer3Input.width === "number" && Number.isFinite(conclusionLayer3Input.width)
+    ? Math.min(1920, Math.max(40, conclusionLayer3Input.width))
+    : CONCLUSION_LAYER_3_DEFAULTS.width;
+  const conclusionLayer3: ConclusionLayer = {
+    x: Math.min(1920 - conclusionWidth3, Math.max(0, typeof conclusionLayer3Input.x === "number" && Number.isFinite(conclusionLayer3Input.x) ? conclusionLayer3Input.x : CONCLUSION_LAYER_3_DEFAULTS.x)),
+    y: Math.min(1080, Math.max(0, typeof conclusionLayer3Input.y === "number" && Number.isFinite(conclusionLayer3Input.y) ? conclusionLayer3Input.y : CONCLUSION_LAYER_3_DEFAULTS.y)),
+    width: conclusionWidth3,
+  };
 
   return {
     title: typeof value.title === "string" ? value.title.slice(0, 120) : "Mon quiz",
@@ -345,6 +426,22 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
     introductionAudioDuration: typeof value.introductionAudioDuration === "number" ? Math.max(0, value.introductionAudioDuration) : null,
     introductionAudioVoice: isVoiceId(value.introductionAudioVoice) ? value.introductionAudioVoice : null,
     introductionAudioRate: typeof value.introductionAudioRate === "number" ? value.introductionAudioRate : null,
+    conclusionText: typeof value.conclusionText === "string" ? value.conclusionText.slice(0, 1000) : "",
+    conclusionBackgroundImage: typeof value.conclusionBackgroundImage === "string" ? value.conclusionBackgroundImage : null,
+    conclusionMusic: typeof value.conclusionMusic === "string" ? value.conclusionMusic : null,
+    conclusionImage: typeof value.conclusionImage === "string" ? value.conclusionImage : null,
+    conclusionLayer,
+    conclusionImage2: typeof value.conclusionImage2 === "string" ? value.conclusionImage2 : null,
+    conclusionLayer2,
+    conclusionImage3: typeof value.conclusionImage3 === "string" ? value.conclusionImage3 : null,
+    conclusionLayer3,
+    conclusionDurationSeconds: typeof value.conclusionDurationSeconds === "number"
+      ? Math.min(MAX_CONCLUSION_SECONDS, Math.max(MIN_CONCLUSION_SECONDS, value.conclusionDurationSeconds))
+      : DEFAULT_CONCLUSION_SECONDS,
+    conclusionAudio: typeof value.conclusionAudio === "string" ? value.conclusionAudio : null,
+    conclusionAudioDuration: typeof value.conclusionAudioDuration === "number" ? Math.max(0, value.conclusionAudioDuration) : null,
+    conclusionAudioVoice: isVoiceId(value.conclusionAudioVoice) ? value.conclusionAudioVoice : null,
+    conclusionAudioRate: typeof value.conclusionAudioRate === "number" ? value.conclusionAudioRate : null,
     introductionImages: Array.isArray(value.introductionImages)
       ? value.introductionImages.filter((image): image is string => typeof image === "string").slice(0, 60)
       : [],
@@ -353,6 +450,14 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
     musicVolume: typeof value.musicVolume === "number"
       ? Math.min(100, Math.max(0, value.musicVolume))
       : defaultProject.musicVolume,
+    countdownSound: typeof value.countdownSound === "string" ? value.countdownSound : null,
+    countdownSoundVolume: typeof value.countdownSoundVolume === "number"
+      ? Math.min(100, Math.max(0, value.countdownSoundVolume))
+      : defaultProject.countdownSoundVolume,
+    answerSound: typeof value.answerSound === "string" ? value.answerSound : null,
+    answerSoundVolume: typeof value.answerSoundVolume === "number"
+      ? Math.min(100, Math.max(0, value.answerSoundVolume))
+      : defaultProject.answerSoundVolume,
     themeImage: typeof value.themeImage === "string" ? value.themeImage : null,
     logo: typeof value.logo === "string" ? value.logo : null,
     voice: value.voice,

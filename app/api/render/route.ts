@@ -4,7 +4,7 @@ import path from "node:path";
 import { NextResponse } from "next/server";
 import { bundle } from "@remotion/bundler";
 import { renderMedia, selectComposition } from "@remotion/renderer";
-import { answerNarrationFrames, introductionDurationFrames, normalizeProject, questionDurationFrames, questionVideoDuration, slugify, type QuizVideoProps } from "@/lib/quiz";
+import { answerNarrationFrames, conclusionDurationFrames, introductionDurationFrames, normalizeProject, questionDurationFrames, questionVideoDuration, slugify, type QuizVideoProps } from "@/lib/quiz";
 import { renderJobs, type RenderJob } from "@/lib/render-jobs";
 import { ensureProjectFolders, saveProject, exportsDirectory } from "@/lib/storage";
 
@@ -72,7 +72,7 @@ async function render(job: RenderJob, project: NonNullable<ReturnType<typeof nor
   await renderMedia({
     composition: {
       ...composition,
-      durationInFrames: questionVideoDuration(selectedQuestions, introductionDurationFrames(project)),
+      durationInFrames: questionVideoDuration(selectedQuestions, introductionDurationFrames(project), scope === "all" ? conclusionDurationFrames(project) : 0),
       width: 1920,
       height: 1080,
       fps: 30,
@@ -120,6 +120,16 @@ export async function POST(request: Request) {
   }
   if ((project.introductionAudioDuration ?? 0) > project.introductionDurationSeconds) {
     return NextResponse.json({ error: `La narration d’introduction doit tenir dans les ${project.introductionDurationSeconds} secondes choisies.` }, { status: 400 });
+  }
+  if (scope === "all" && project.conclusionText.trim() && (
+    !project.conclusionAudio ||
+    project.conclusionAudioVoice !== project.voice ||
+    project.conclusionAudioRate !== project.speechRate
+  )) {
+    return NextResponse.json({ error: "Générez la narration de conclusion avec la voix et la vitesse sélectionnées avant l’export." }, { status: 400 });
+  }
+  if (scope === "all" && (project.conclusionAudioDuration ?? 0) > project.conclusionDurationSeconds) {
+    return NextResponse.json({ error: `La narration de conclusion doit tenir dans les ${project.conclusionDurationSeconds} secondes choisies.` }, { status: 400 });
   }
   const missingAudio = selected.some((question) =>
     !question.questionAudio || !question.answerAudio ||
