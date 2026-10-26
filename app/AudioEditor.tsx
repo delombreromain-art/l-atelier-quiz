@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { Fragment, forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { RecordingClip, RecordingTake } from "@/lib/quiz";
 
 type AudioEditorProps = {
@@ -203,6 +203,7 @@ export const AudioEditor = forwardRef<AudioEditorHandle, AudioEditorProps>(funct
   const [montagePlayhead, setMontagePlayhead] = useState(0);
   const [montageIsPlaying, setMontageIsPlaying] = useState(false);
   const [montageZoom, setMontageZoom] = useState(1);
+  const [montageVolume, setMontageVolume] = useState(0.85);
   const [takeWaveforms, setTakeWaveforms] = useState<Record<string, { path: string; peaks: number[] }>>({});
   const [montageBusy, setMontageBusy] = useState(false);
   const [montageError, setMontageError] = useState("");
@@ -213,6 +214,8 @@ export const AudioEditor = forwardRef<AudioEditorHandle, AudioEditorProps>(funct
   const canRedo = historyIndex < history.length - 1;
   const selectedClip = montageClips.find((clip) => clip.id === selectedClipId) ?? null;
   const montageLength = montageClips.reduce((sum, clip, index) => sum + clip.end - clip.start + (index < montageClips.length - 1 ? clip.pauseAfter : 0), 0);
+  const montageScale = 115 * montageZoom;
+  const montageTimelineWidth = Math.max(680, montageClips.reduce((sum, clip, index) => sum + Math.max(150, (clip.end - clip.start) * montageScale) + (index < montageClips.length - 1 ? Math.max(6, clip.pauseAfter * montageScale) + 6 : 0), 0) + 16);
   const montageUndoAvailable = montageHistoryState > 0;
   const montageRedoAvailable = montageHistoryState < montageHistoryRef.current.length - 1;
 
@@ -288,6 +291,7 @@ export const AudioEditor = forwardRef<AudioEditorHandle, AudioEditorProps>(funct
 
   useEffect(() => () => { if (montagePreviewUrl) URL.revokeObjectURL(montagePreviewUrl); }, [montagePreviewUrl]);
   useEffect(() => () => { sourcePreviewRef.current?.pause(); montageAudioRef.current?.pause(); }, []);
+  useEffect(() => { if (montageAudioRef.current) montageAudioRef.current.volume = montageVolume; }, [montagePreviewUrl, montageVolume]);
 
   const peaks = useMemo(() => {
     if (!buffer) return [];
@@ -636,17 +640,17 @@ export const AudioEditor = forwardRef<AudioEditorHandle, AudioEditorProps>(funct
       <div className="audio-montage-section-heading"><div><strong>MONTAGE FINAL</strong><span>{montageClips.length} extrait{montageClips.length > 1 ? "s" : ""} · durée estimée {formatTime(montageLength)}{montageDuration ? ` · aperçu ${formatTime(montageDuration)}` : ""}</span></div><div className="audio-montage-history"><button type="button" disabled={!montageUndoAvailable || disabled || montageBusy} onClick={undoMontage}>↶ Annuler</button><button type="button" disabled={!montageRedoAvailable || disabled || montageBusy} onClick={redoMontage}>↷ Rétablir</button></div></div>
       <div className="audio-montage-zoom"><span>Zoom de la timeline</span><input type="range" aria-label="Zoom de la timeline du montage" min="0.75" max="3" step="0.25" value={montageZoom} onChange={(event) => setMontageZoom(Number(event.target.value))} /><output>{Math.round(montageZoom * 100)} %</output></div>
       <div className="audio-montage-track" aria-label="Extraits réorganisables" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { if (!dropTakeAt(event)) { const id = event.dataTransfer.getData("text/plain"); if (id) { event.preventDefault(); reorderClip(id, montageClips.at(-1)?.id ?? id); } } }}>
-        <div className="audio-montage-ruler" onClick={seekMontage} style={{ width: `${Math.max(680, montageLength * 115 * montageZoom)}px` }}><span>00:00</span><span>{formatTime(montageDuration || montageLength)}</span><i style={{ left: `${(montageDuration || montageLength) ? Math.min(100, montagePlayhead / (montageDuration || montageLength) * 100) : 0}%` }} /></div>
-        {!montageClips.length ? <p className="audio-take-empty">Le montage est vide. Ajoutez une sélection, une prise entière ou glissez une prise ici.</p> : <div className="audio-montage-track-inner" style={{ width: `${Math.max(680, montageLength * 115 * montageZoom)}px` }}>{montageClips.map((clip, index) => {
-        const takeIndex = takes.findIndex((item) => item.id === clip.takeId); const durationForBlock = Math.max(0.01, clip.end - clip.start); const width = montageLength ? Math.max(12, durationForBlock / montageLength * 100) : 100;
+        <div className="audio-montage-ruler" onClick={seekMontage} style={{ width: `${montageTimelineWidth}px` }}><span>00:00</span><span>{formatTime(montageDuration || montageLength)}</span></div>
+        {!montageClips.length ? <p className="audio-take-empty">Le montage est vide. Ajoutez une sélection, une prise entière ou glissez une prise ici.</p> : <div className="audio-montage-track-inner" style={{ width: `${montageTimelineWidth}px` }}>{montageClips.map((clip, index) => {
+        const takeIndex = takes.findIndex((item) => item.id === clip.takeId); const durationForBlock = Math.max(0.01, clip.end - clip.start); const width = Math.max(150, durationForBlock * montageScale);
         const sourceTake = takes.find((item) => item.id === clip.takeId); const sourceWave = takeWaveforms[clip.takeId]?.path === sourceTake?.path ? takeWaveforms[clip.takeId].peaks : undefined;
         const fallbackWave = clip.waveform ?? (sourceWave && sourceTake ? Array.from({ length: 42 }, (_, bar) => sourceWave[Math.min(sourceWave.length - 1, Math.floor((clip.start + (clip.end - clip.start) * bar / 42) / sourceTake.duration * sourceWave.length))] ?? 0) : selectedTakeId === clip.takeId ? Array.from({ length: 42 }, (_, bar) => { const sample = peaks[Math.floor((clip.start + (clip.end - clip.start) * bar / 42) / totalDuration * peaks.length)]; return sample?.peak ?? 0; }) : []);
-        return <article key={clip.id} className={`audio-montage-clip${selectedClipId === clip.id ? " active" : ""}`} draggable onClick={() => setSelectedClipId(clip.id)} onDragStart={(event) => { event.dataTransfer.setData("text/plain", clip.id); event.dataTransfer.effectAllowed = "move"; }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { if (!dropTakeAt(event, clip.id)) { event.preventDefault(); event.stopPropagation(); reorderClip(event.dataTransfer.getData("text/plain"), clip.id); } }} style={{ flexBasis: `${width}%` }}>
+        return <Fragment key={clip.id}><article className={`audio-montage-clip${selectedClipId === clip.id ? " active" : ""}`} draggable onClick={() => setSelectedClipId(clip.id)} onDragStart={(event) => { event.dataTransfer.setData("text/plain", clip.id); event.dataTransfer.effectAllowed = "move"; }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { if (!dropTakeAt(event, clip.id)) { event.preventDefault(); event.stopPropagation(); reorderClip(event.dataTransfer.getData("text/plain"), clip.id); } }} style={{ flexBasis: `${width}px`, width: `${width}px`, maxWidth: "none" }}>
           <header><span className="audio-clip-drag" title="Glisser pour changer l’ordre">⠿</span><strong>{index + 1}. Prise {Math.max(1, takeIndex + 1)}</strong><small>{formatTime(durationForBlock)}</small><button type="button" aria-label={`Retirer l’extrait ${index + 1}`} onClick={(event) => { event.stopPropagation(); removeClip(clip.id); }}>×</button></header>
           <small className="audio-clip-range">Source : {formatTime(clip.start)} – {formatTime(clip.end)}</small>
           <div className="audio-clip-wave">{fallbackWave.map((height, bar) => <i key={bar} style={{ height: `${Math.max(2, height * 100)}%` }} />)}<button type="button" className="audio-clip-trim-handle left" aria-label={`Déplacer le début de l’extrait ${index + 1}`} onPointerDown={(event) => beginClipTrim(event, clip, "left")} onPointerMove={moveClipTrim} onPointerUp={endClipTrim} onPointerCancel={endClipTrim} /><button type="button" className="audio-clip-trim-handle right" aria-label={`Déplacer la fin de l’extrait ${index + 1}`} onPointerDown={(event) => beginClipTrim(event, clip, "right")} onPointerMove={moveClipTrim} onPointerUp={endClipTrim} onPointerCancel={endClipTrim} /></div>
           <div className="audio-clip-actions"><button type="button" onClick={(event) => { event.stopPropagation(); previewClip(clip); }}>▶ Écouter</button><button type="button" onClick={(event) => { event.stopPropagation(); duplicateClip(clip); }}>Dupliquer</button>{index > 0 && <button type="button" onClick={(event) => { event.stopPropagation(); void previewJoin(index); }}>◫ Raccord</button>}</div>
-        </article>;
+        </article>{index < montageClips.length - 1 && clip.pauseAfter > 0 && <div className="audio-montage-pause" aria-label={`Pause de ${clip.pauseAfter.toFixed(2)} secondes après la prise ${index + 1}`} style={{ flexBasis: `${Math.max(76, clip.pauseAfter * montageScale)}px` }}><span>PAUSE</span><strong>{clip.pauseAfter.toFixed(2)} s</strong></div>}</Fragment>;
       })}{Boolean(montagePreviewUrl && (montageDuration || montageLength)) && <i className="audio-montage-playhead" style={{ left: `${Math.min(100, montagePlayhead / (montageDuration || montageLength) * 100)}%` }} />}</div>}</div>
       {selectedClip && <div className="audio-clip-edit-panel"><div className="audio-clip-edit-heading"><strong>Rogner l’extrait {montageClips.findIndex((clip) => clip.id === selectedClip.id) + 1}</strong><button type="button" className="audio-reset-button" onClick={() => removeClip(selectedClip.id)}>Retirer du montage</button></div>
         <label>Début <output>{formatTime(selectedClip.start)}</output><input type="range" min="0" max={takes.find((item) => item.id === selectedClip.takeId)?.duration ?? selectedClip.end} step="0.01" value={selectedClip.start} onChange={(event) => editClip(selectedClip.id, { start: Math.min(Number(event.target.value), selectedClip.end - 0.05) })} onPointerUp={() => commitMontage(montageClips)} onKeyUp={() => commitMontage(montageClips)} /></label>
@@ -655,7 +659,18 @@ export const AudioEditor = forwardRef<AudioEditorHandle, AudioEditorProps>(funct
         <label>Fondu à l’entrée <output>{selectedClip.transitionMs} ms</output><input type="range" min="0" max="30" step="1" value={selectedClip.transitionMs} onChange={(event) => editClip(selectedClip.id, { transitionMs: Number(event.target.value) })} onPointerUp={() => commitMontage(montageClips)} onKeyUp={() => commitMontage(montageClips)} /></label>
       </div>}
       {montageError && <p className="recorder-error" role="alert">{montageError}</p>}
-      <div className="audio-montage-footer"><button type="button" onClick={() => void previewMontage()} disabled={!montageClips.length || disabled || montageBusy}>{montageBusy ? "Préparation…" : "▶ Générer et écouter le montage"}</button>{montagePreviewUrl && <><button type="button" onClick={() => { const player = montageAudioRef.current; if (!player) return; if (player.paused) void player.play().catch(() => undefined); else player.pause(); }}>{montageIsPlaying ? "Ⅱ Pause" : "▶ Lire / reprendre"}</button><button type="button" onClick={restartMontage}>↺ Revenir au début</button><audio ref={montageAudioRef} controls preload="metadata" src={montagePreviewUrl} aria-label="Écouter le montage complet" onTimeUpdate={(event) => setMontagePlayhead(event.currentTarget.currentTime)} onLoadedMetadata={(event) => setMontageDuration(event.currentTarget.duration)} onPlay={() => setMontageIsPlaying(true)} onPause={() => setMontageIsPlaying(false)} onEnded={() => { setMontageIsPlaying(false); setMontagePlayhead(0); }} /></>}<button type="button" className="audio-save-button" onClick={() => void validateMontage()} disabled={!montageClips.length || disabled || montageBusy || saving}>{saving ? "Enregistrement…" : "Valider et enregistrer le montage final"}</button></div>
+      <div className="audio-montage-footer">
+        <button type="button" onClick={() => void previewMontage()} disabled={!montageClips.length || disabled || montageBusy}>{montageBusy ? "Préparation…" : "▶ Générer et écouter le montage"}</button>
+        {montagePreviewUrl && <div className="audio-montage-player" aria-label="Lecteur du montage complet">
+          <audio ref={montageAudioRef} className="audio-montage-audio" preload="metadata" src={montagePreviewUrl} aria-label="Audio du montage complet" onTimeUpdate={(event) => setMontagePlayhead(event.currentTarget.currentTime)} onLoadedMetadata={(event) => setMontageDuration(event.currentTarget.duration)} onPlay={() => setMontageIsPlaying(true)} onPause={() => setMontageIsPlaying(false)} onEnded={() => { setMontageIsPlaying(false); setMontagePlayhead(0); }} />
+          <button type="button" className="audio-player-control" aria-label={montageIsPlaying ? "Mettre en pause" : "Lire le montage"} onClick={() => { const player = montageAudioRef.current; if (!player) return; if (player.paused) void player.play().catch(() => undefined); else player.pause(); }}>{montageIsPlaying ? "Ⅱ" : "▶"}</button>
+          <button type="button" className="audio-player-control secondary" aria-label="Revenir au début" onClick={restartMontage}>↺</button>
+          <output className="audio-player-time">{formatTime(montagePlayhead)} <span>/</span> {formatTime(montageDuration || montageLength)}</output>
+          <input className="audio-player-seek" type="range" aria-label="Position de lecture du montage" min="0" max={Math.max(0.01, montageDuration || montageLength)} step="0.01" value={Math.min(montagePlayhead, montageDuration || montageLength)} onChange={(event) => { const time = Number(event.target.value); if (montageAudioRef.current) montageAudioRef.current.currentTime = time; setMontagePlayhead(time); }} />
+          <span className="audio-player-volume-icon" aria-hidden="true">◖))</span><input className="audio-player-volume" type="range" aria-label="Volume de lecture du montage" min="0" max="1" step="0.05" value={montageVolume} onChange={(event) => { const volume = Number(event.target.value); setMontageVolume(volume); if (montageAudioRef.current) montageAudioRef.current.volume = volume; }} />
+        </div>}
+        <button type="button" className="audio-save-button" onClick={() => void validateMontage()} disabled={!montageClips.length || disabled || montageBusy || saving}>{saving ? "Enregistrement…" : "Valider et enregistrer le montage final"}</button>
+      </div>
     </section>}
   </section>;
 });
