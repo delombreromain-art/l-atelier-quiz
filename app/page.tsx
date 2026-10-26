@@ -207,16 +207,21 @@ export default function Home() {
     finally { setMediaBusy(""); }
   }, []);
 
-  const saveRecording = useCallback(async (blob: Blob, duration: number, onSaved: (path: string, duration: number) => void) => {
+  const saveRecording = useCallback(async (blob: Blob, duration: number, onSaved: (path: string, duration: number, originalPath: string | null, originalDuration: number) => void, originalBlob?: Blob, originalDuration?: number, isNewTake = false) => {
     setMediaBusy("voice-recording"); setFeedback("");
     try {
-      const body = new FormData();
-      body.set("file", new File([blob], "recording", { type: blob.type || "audio/webm" }));
-      body.set("duration", String(duration));
-      const response = await fetch("/api/recordings", { method: "POST", body });
-      const result = await response.json() as { path?: string; error?: string };
-      if (!response.ok || !result.path) throw new Error(result.error || "La prise n’a pas pu être sauvegardée.");
-      onSaved(result.path, duration); setFeedback(`Enregistrement conservé (${duration.toFixed(1)} s).`);
+      const upload = async (audioBlob: Blob, seconds: number) => {
+        const body = new FormData();
+        body.set("file", new File([audioBlob], "recording", { type: audioBlob.type || "audio/webm" }));
+        body.set("duration", String(seconds));
+        const response = await fetch("/api/recordings", { method: "POST", body });
+        const result = await response.json() as { path?: string; error?: string };
+        if (!response.ok || !result.path) throw new Error(result.error || "La prise n’a pas pu être sauvegardée.");
+        return result.path;
+      };
+      const savedPath = await upload(blob, duration);
+      const savedOriginal = originalBlob ? await upload(originalBlob, originalDuration ?? duration) : isNewTake ? savedPath : null;
+      onSaved(savedPath, duration, savedOriginal, originalBlob ? originalDuration ?? duration : duration); setFeedback(`Enregistrement conservé (${duration.toFixed(1)} s).`);
     } catch (error) { setFeedback(error instanceof Error ? error.message : "La prise n’a pas pu être sauvegardée."); throw error; }
     finally { setMediaBusy(""); }
   }, []);
@@ -580,7 +585,7 @@ export default function Home() {
                 </div>
                 <div className="intro-voice-row"><span className={introVoiceReady ? "voice-done" : project.introductionText.trim() ? "voice-missing" : "voice-done"}>{project.introductionVoiceSource === "recording" && project.introductionRecording ? `Micro sélectionné · ${project.introductionRecordingDuration?.toFixed(1)} s` : project.introductionAudio && introVoiceReady ? `Voix IA sélectionnée · ${project.introductionAudioDuration?.toFixed(1)} s` : project.introductionText.trim() ? "Choisissez IA ou Micro ci-dessous" : "Ajoutez un texte pour créer la voix"}</span><button className="generate-one" disabled={voiceBusy || !project.introductionText.trim()} onClick={() => void generateIntroductionVoice()}>{voiceBusy ? "Génération…" : project.introductionAudio ? "Régénérer la voix IA" : "Générer la voix IA"}</button></div>
                 {project.introductionAudio && <audio className="intro-audio-preview" controls preload="none" src={assetUrl(project.introductionAudio) || undefined} aria-label="Écouter la narration de l’introduction" />}
-                <VoiceRecorder label="Narration de l’introduction" path={project.introductionRecording} duration={project.introductionRecordingDuration} source={project.introductionVoiceSource} aiAvailable={Boolean(project.introductionAudio && project.introductionAudioVoice === project.voice && project.introductionAudioRate === project.speechRate)} onSourceChange={(introductionVoiceSource) => updateProject({ introductionVoiceSource })} busy={mediaBusy === "voice-recording"} onSave={(blob, duration) => saveRecording(blob, duration, (introductionRecording, introductionRecordingDuration) => updateProject({ introductionRecording, introductionRecordingDuration, introductionVoiceSource: "recording" }))} onDelete={() => updateProject({ introductionRecording: null, introductionRecordingDuration: null, introductionVoiceSource: "ai" })} />
+                <VoiceRecorder label="Narration de l’introduction" path={project.introductionRecording} duration={project.introductionRecordingDuration} originalPath={project.introductionRecordingOriginal} source={project.introductionVoiceSource} aiAvailable={Boolean(project.introductionAudio && project.introductionAudioVoice === project.voice && project.introductionAudioRate === project.speechRate)} onSourceChange={(introductionVoiceSource) => updateProject({ introductionVoiceSource })} busy={mediaBusy === "voice-recording"} onSave={(blob, duration, originalBlob, originalDuration, isNewTake) => saveRecording(blob, duration, (introductionRecording, introductionRecordingDuration, originalPath, savedOriginalDuration) => updateProject({ introductionRecording, introductionRecordingDuration, introductionRecordingOriginal: originalPath ?? project.introductionRecordingOriginal ?? project.introductionRecording ?? introductionRecording, introductionRecordingOriginalDuration: originalPath ? savedOriginalDuration : project.introductionRecordingOriginalDuration ?? project.introductionRecordingDuration ?? introductionRecordingDuration, introductionVoiceSource: "recording" }), originalBlob, originalDuration, isNewTake)} onDelete={() => updateProject({ introductionRecording: null, introductionRecordingDuration: null, introductionRecordingOriginal: null, introductionRecordingOriginalDuration: null, introductionVoiceSource: "ai" })} />
               </section>
               <section className="panel decor-panel" id="habillage">
                   <div className="panel-heading"><div><span className="panel-step">02</span><div><h2>Décor &amp; logo</h2><p>Fond et logo partagés, titre et image du thème d’ouverture.</p></div></div></div>
@@ -630,7 +635,7 @@ export default function Home() {
                 </div>
                 <div className="intro-voice-row"><span className={conclusionVoiceReady ? "voice-done" : project.conclusionText.trim() ? "voice-missing" : "voice-done"}>{project.conclusionVoiceSource === "recording" && project.conclusionRecording ? `Micro sélectionné · ${project.conclusionRecordingDuration?.toFixed(1)} s` : project.conclusionAudio && conclusionVoiceReady ? `Voix IA sélectionnée · ${project.conclusionAudioDuration?.toFixed(1)} s` : project.conclusionText.trim() ? "Choisissez IA ou Micro ci-dessous" : "Ajoutez un texte pour créer la voix"}</span><button className="generate-one" disabled={voiceBusy || !project.conclusionText.trim()} onClick={() => void generateConclusionVoice()}>{voiceBusy ? "Génération…" : project.conclusionAudio ? "Régénérer la voix IA" : "Générer la voix IA"}</button></div>
                 {project.conclusionAudio && <audio className="intro-audio-preview" controls preload="none" src={assetUrl(project.conclusionAudio) || undefined} aria-label="Écouter la narration de conclusion" />}
-                <VoiceRecorder label="Narration de la conclusion" path={project.conclusionRecording} duration={project.conclusionRecordingDuration} source={project.conclusionVoiceSource} aiAvailable={Boolean(project.conclusionAudio && project.conclusionAudioVoice === project.voice && project.conclusionAudioRate === project.speechRate)} onSourceChange={(conclusionVoiceSource) => updateProject({ conclusionVoiceSource })} busy={mediaBusy === "voice-recording"} onSave={(blob, duration) => saveRecording(blob, duration, (conclusionRecording, conclusionRecordingDuration) => updateProject({ conclusionRecording, conclusionRecordingDuration, conclusionVoiceSource: "recording" }))} onDelete={() => updateProject({ conclusionRecording: null, conclusionRecordingDuration: null, conclusionVoiceSource: "ai" })} />
+                <VoiceRecorder label="Narration de la conclusion" path={project.conclusionRecording} duration={project.conclusionRecordingDuration} originalPath={project.conclusionRecordingOriginal} source={project.conclusionVoiceSource} aiAvailable={Boolean(project.conclusionAudio && project.conclusionAudioVoice === project.voice && project.conclusionAudioRate === project.speechRate)} onSourceChange={(conclusionVoiceSource) => updateProject({ conclusionVoiceSource })} busy={mediaBusy === "voice-recording"} onSave={(blob, duration, originalBlob, originalDuration, isNewTake) => saveRecording(blob, duration, (conclusionRecording, conclusionRecordingDuration, originalPath, savedOriginalDuration) => updateProject({ conclusionRecording, conclusionRecordingDuration, conclusionRecordingOriginal: originalPath ?? project.conclusionRecordingOriginal ?? project.conclusionRecording ?? conclusionRecording, conclusionRecordingOriginalDuration: originalPath ? savedOriginalDuration : project.conclusionRecordingOriginalDuration ?? project.conclusionRecordingDuration ?? conclusionRecordingDuration, conclusionVoiceSource: "recording" }), originalBlob, originalDuration, isNewTake)} onDelete={() => updateProject({ conclusionRecording: null, conclusionRecordingDuration: null, conclusionRecordingOriginal: null, conclusionRecordingOriginalDuration: null, conclusionVoiceSource: "ai" })} />
               </section>
             </div>
 

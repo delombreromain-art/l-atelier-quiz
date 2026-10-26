@@ -20,8 +20,16 @@ export async function PUT(request: Request) {
   const previous = await readProject();
   await saveProject(project);
   const recordingPaths = (value: typeof project) => [
-    value.introductionRecording, value.conclusionRecording,
-    ...value.questions.flatMap((question) => [question.questionRecording, question.answerRecording, question.commentaryRecording]),
+    value.introductionRecording, value.introductionRecordingOriginal, value.conclusionRecording, value.conclusionRecordingOriginal,
+    ...value.introductionRecordingTakes.flatMap((take) => [take.path, take.originalPath]), ...value.conclusionRecordingTakes.flatMap((take) => [take.path, take.originalPath]),
+    ...value.questions.flatMap((question) => [
+      question.questionRecording, question.questionRecordingOriginal,
+      question.answerRecording, question.answerRecordingOriginal,
+      question.commentaryRecording, question.commentaryRecordingOriginal,
+      ...question.questionRecordingTakes.flatMap((take) => [take.path, take.originalPath]),
+      ...question.answerRecordingTakes.flatMap((take) => [take.path, take.originalPath]),
+      ...question.commentaryRecordingTakes.flatMap((take) => [take.path, take.originalPath]),
+    ]),
   ].filter((asset): asset is string => Boolean(asset));
   const retained = new Set(recordingPaths(project));
   const removed = new Set(recordingPaths(previous).filter((asset) => !retained.has(asset)));

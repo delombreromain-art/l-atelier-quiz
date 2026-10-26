@@ -18,6 +18,9 @@ export const MAX_QUESTION_LIBRARY = 5000;
 
 export type VoiceId = "fr_FR-siwis-medium" | "fr_FR-upmc-medium" | "fr_FR-tom-medium" | "fr_FR-mls-medium";
 export type VoiceSource = "ai" | "recording";
+
+export type RecordingTake = { id: string; path: string; duration: number; originalPath?: string; originalDuration?: number };
+export type RecordingClip = { id: string; takeId: string; start: number; end: number; pauseAfter: number; transitionMs: number; waveform?: number[] };
 export type IntroductionLayerId = "logo" | "questionsPanel" | "history" | "geography" | "science" | "cinema" | "hourglass";
 export type IntroductionLayer = {
   image: string | null;
@@ -71,10 +74,22 @@ export type QuizQuestion = {
   commentaryAudioDuration: number | null;
   questionRecording: string | null;
   questionRecordingDuration: number | null;
+  questionRecordingOriginal: string | null;
+  questionRecordingOriginalDuration: number | null;
+  questionRecordingTakes: RecordingTake[];
+  questionRecordingClips: RecordingClip[];
   answerRecording: string | null;
   answerRecordingDuration: number | null;
+  answerRecordingOriginal: string | null;
+  answerRecordingOriginalDuration: number | null;
+  answerRecordingTakes: RecordingTake[];
+  answerRecordingClips: RecordingClip[];
   commentaryRecording: string | null;
   commentaryRecordingDuration: number | null;
+  commentaryRecordingOriginal: string | null;
+  commentaryRecordingOriginalDuration: number | null;
+  commentaryRecordingTakes: RecordingTake[];
+  commentaryRecordingClips: RecordingClip[];
   questionVoiceSource: VoiceSource;
   answerVoiceSource: VoiceSource;
   commentaryVoiceSource: VoiceSource;
@@ -92,6 +107,10 @@ export type QuizProject = {
   introductionAudioRate: number | null;
   introductionRecording: string | null;
   introductionRecordingDuration: number | null;
+  introductionRecordingOriginal: string | null;
+  introductionRecordingOriginalDuration: number | null;
+  introductionRecordingTakes: RecordingTake[];
+  introductionRecordingClips: RecordingClip[];
   introductionVoiceSource: VoiceSource;
   introductionMusic: string | null;
   introductionMusicDuration: number | null;
@@ -113,6 +132,10 @@ export type QuizProject = {
   conclusionAudioRate: number | null;
   conclusionRecording: string | null;
   conclusionRecordingDuration: number | null;
+  conclusionRecordingOriginal: string | null;
+  conclusionRecordingOriginalDuration: number | null;
+  conclusionRecordingTakes: RecordingTake[];
+  conclusionRecordingClips: RecordingClip[];
   conclusionVoiceSource: VoiceSource;
   introductionImages: string[];
   background: string | null;
@@ -165,10 +188,22 @@ export const makeQuestion = (number: number): QuizQuestion => ({
   commentaryAudioDuration: null,
   questionRecording: null,
   questionRecordingDuration: null,
+  questionRecordingOriginal: null,
+  questionRecordingOriginalDuration: null,
+  questionRecordingTakes: [],
+  questionRecordingClips: [],
   answerRecording: null,
   answerRecordingDuration: null,
+  answerRecordingOriginal: null,
+  answerRecordingOriginalDuration: null,
+  answerRecordingTakes: [],
+  answerRecordingClips: [],
   commentaryRecording: null,
   commentaryRecordingDuration: null,
+  commentaryRecordingOriginal: null,
+  commentaryRecordingOriginalDuration: null,
+  commentaryRecordingTakes: [],
+  commentaryRecordingClips: [],
   questionVoiceSource: "ai",
   answerVoiceSource: "ai",
   commentaryVoiceSource: "ai",
@@ -252,6 +287,10 @@ export const defaultProject: QuizProject = {
   introductionAudioRate: null,
   introductionRecording: null,
   introductionRecordingDuration: null,
+  introductionRecordingOriginal: null,
+  introductionRecordingOriginalDuration: null,
+  introductionRecordingTakes: [],
+  introductionRecordingClips: [],
   introductionVoiceSource: "ai",
   introductionMusic: null,
   introductionMusicDuration: null,
@@ -273,6 +312,10 @@ export const defaultProject: QuizProject = {
   conclusionAudioRate: null,
   conclusionRecording: null,
   conclusionRecordingDuration: null,
+  conclusionRecordingOriginal: null,
+  conclusionRecordingOriginalDuration: null,
+  conclusionRecordingTakes: [],
+  conclusionRecordingClips: [],
   conclusionVoiceSource: "ai",
   introductionImages: [],
   background: null,
@@ -384,6 +427,43 @@ export const slugify = (value: string) =>
 export const isVoiceId = (value: unknown): value is VoiceId =>
   value === "fr_FR-siwis-medium" || value === "fr_FR-upmc-medium" || value === "fr_FR-tom-medium" || value === "fr_FR-mls-medium";
 
+const normalizeRecordingTakes = (raw: unknown, fallbackPath: string | null, fallbackDuration: number | null, fallbackId: string): RecordingTake[] => {
+  if (!Array.isArray(raw) || (raw.length === 0 && fallbackPath)) return fallbackPath ? [{ id: `take-${fallbackId}`, path: fallbackPath, duration: Math.max(0, fallbackDuration ?? 0) }] : [];
+  return raw.flatMap((item, index) => {
+    if (!item || typeof item !== "object") return [];
+    const take = item as Partial<RecordingTake>;
+    if (typeof take.id !== "string" || typeof take.path !== "string" || !take.path || typeof take.duration !== "number" || !Number.isFinite(take.duration) || take.duration <= 0) return [];
+    return [{ id: take.id.slice(0, 100) || `take-${index + 1}`, path: take.path, duration: take.duration,
+      originalPath: typeof take.originalPath === "string" && take.originalPath ? take.originalPath : undefined,
+      originalDuration: typeof take.originalDuration === "number" && Number.isFinite(take.originalDuration) && take.originalDuration > 0 ? take.originalDuration : undefined }];
+  }).slice(0, 100);
+};
+
+const normalizeRecordingClips = (raw: unknown, takes: RecordingTake[], fallbackId: string): RecordingClip[] => {
+  if (!Array.isArray(raw)) {
+    const first = takes[0];
+    return first ? [{ id: `clip-${fallbackId}`, takeId: first.id, start: 0, end: first.duration, pauseAfter: 0, transitionMs: 8 }] : [];
+  }
+  return raw.flatMap((item, index) => {
+    if (!item || typeof item !== "object") return [];
+    const clip = item as Partial<RecordingClip>;
+    const take = takes.find((candidate) => candidate.id === clip.takeId);
+    if (!take || typeof clip.start !== "number" || typeof clip.end !== "number") return [];
+    const start = Math.min(take.duration, Math.max(0, clip.start));
+    const end = Math.min(take.duration, Math.max(start, clip.end));
+    if (end - start < 0.01) return [];
+    return [{
+      id: typeof clip.id === "string" ? clip.id.slice(0, 100) : `clip-${fallbackId}-${index + 1}`,
+      takeId: take.id,
+      start,
+      end,
+      pauseAfter: typeof clip.pauseAfter === "number" ? Math.min(10, Math.max(0, clip.pauseAfter)) : 0,
+      transitionMs: typeof clip.transitionMs === "number" ? Math.min(40, Math.max(0, clip.transitionMs)) : 8,
+      waveform: Array.isArray(clip.waveform) ? clip.waveform.filter((value): value is number => typeof value === "number" && Number.isFinite(value)).slice(0, 80).map((value) => Math.min(1, Math.max(0, value))) : undefined,
+    }];
+  }).slice(0, 500);
+};
+
 export const normalizeProject = (input: unknown): QuizProject | null => {
   if (!input || typeof input !== "object") return null;
   const value = input as Partial<QuizProject>;
@@ -397,9 +477,19 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
     const row = item as Partial<QuizQuestion>;
     if (typeof row.prompt !== "string" || typeof row.answer !== "string") return null;
     if (row.prompt.length > 1000 || row.answer.length > 500 || (row.title?.length ?? 0) > 100 || (row.answerCommentary?.length ?? 0) > 1000) return null;
+    const questionId = typeof row.id === "string" ? row.id.slice(0, 80) : `question-${index + 1}`;
+    const questionPath = typeof row.questionRecording === "string" ? row.questionRecording : null;
+    const answerPath = typeof row.answerRecording === "string" ? row.answerRecording : null;
+    const commentaryPath = typeof row.commentaryRecording === "string" ? row.commentaryRecording : null;
+    const questionDuration = typeof row.questionRecordingDuration === "number" ? Math.max(0, row.questionRecordingDuration) : null;
+    const answerDuration = typeof row.answerRecordingDuration === "number" ? Math.max(0, row.answerRecordingDuration) : null;
+    const commentaryDuration = typeof row.commentaryRecordingDuration === "number" ? Math.max(0, row.commentaryRecordingDuration) : null;
+    const questionTakes = normalizeRecordingTakes(row.questionRecordingTakes, questionPath, questionDuration, `${questionId}-question`);
+    const answerTakes = normalizeRecordingTakes(row.answerRecordingTakes, answerPath, answerDuration, `${questionId}-answer`);
+    const commentaryTakes = normalizeRecordingTakes(row.commentaryRecordingTakes, commentaryPath, commentaryDuration, `${questionId}-commentary`);
     questions.push({
       ...makeQuestion(index + 1),
-      id: typeof row.id === "string" ? row.id.slice(0, 80) : `question-${index + 1}`,
+      id: questionId,
       enabled: row.enabled !== false,
       title: typeof row.title === "string" ? row.title : "",
       prompt: row.prompt,
@@ -426,10 +516,22 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
       commentaryAudioDuration: typeof row.commentaryAudioDuration === "number" ? row.commentaryAudioDuration : null,
       questionRecording: typeof row.questionRecording === "string" ? row.questionRecording : null,
       questionRecordingDuration: typeof row.questionRecordingDuration === "number" ? Math.max(0, row.questionRecordingDuration) : null,
+      questionRecordingOriginal: typeof row.questionRecordingOriginal === "string" ? row.questionRecordingOriginal : typeof row.questionRecording === "string" ? row.questionRecording : null,
+      questionRecordingOriginalDuration: typeof row.questionRecordingOriginalDuration === "number" ? Math.max(0, row.questionRecordingOriginalDuration) : typeof row.questionRecordingDuration === "number" ? Math.max(0, row.questionRecordingDuration) : null,
+      questionRecordingTakes: questionTakes,
+      questionRecordingClips: normalizeRecordingClips(row.questionRecordingClips, questionTakes, `${questionId}-question`),
       answerRecording: typeof row.answerRecording === "string" ? row.answerRecording : null,
       answerRecordingDuration: typeof row.answerRecordingDuration === "number" ? Math.max(0, row.answerRecordingDuration) : null,
+      answerRecordingOriginal: typeof row.answerRecordingOriginal === "string" ? row.answerRecordingOriginal : typeof row.answerRecording === "string" ? row.answerRecording : null,
+      answerRecordingOriginalDuration: typeof row.answerRecordingOriginalDuration === "number" ? Math.max(0, row.answerRecordingOriginalDuration) : typeof row.answerRecordingDuration === "number" ? Math.max(0, row.answerRecordingDuration) : null,
+      answerRecordingTakes: answerTakes,
+      answerRecordingClips: normalizeRecordingClips(row.answerRecordingClips, answerTakes, `${questionId}-answer`),
       commentaryRecording: typeof row.commentaryRecording === "string" ? row.commentaryRecording : null,
       commentaryRecordingDuration: typeof row.commentaryRecordingDuration === "number" ? Math.max(0, row.commentaryRecordingDuration) : null,
+      commentaryRecordingOriginal: typeof row.commentaryRecordingOriginal === "string" ? row.commentaryRecordingOriginal : typeof row.commentaryRecording === "string" ? row.commentaryRecording : null,
+      commentaryRecordingOriginalDuration: typeof row.commentaryRecordingOriginalDuration === "number" ? Math.max(0, row.commentaryRecordingOriginalDuration) : typeof row.commentaryRecordingDuration === "number" ? Math.max(0, row.commentaryRecordingDuration) : null,
+      commentaryRecordingTakes: commentaryTakes,
+      commentaryRecordingClips: normalizeRecordingClips(row.commentaryRecordingClips, commentaryTakes, `${questionId}-commentary`),
       questionVoiceSource: row.questionVoiceSource === "recording" || (!row.questionVoiceSource && row.questionRecording) ? "recording" : "ai",
       answerVoiceSource: row.answerVoiceSource === "recording" || (!row.answerVoiceSource && row.answerRecording) ? "recording" : "ai",
       commentaryVoiceSource: row.commentaryVoiceSource === "recording" || (!row.commentaryVoiceSource && row.commentaryRecording) ? "recording" : "ai",
@@ -505,6 +607,10 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
     introductionAudioRate: typeof value.introductionAudioRate === "number" ? value.introductionAudioRate : null,
     introductionRecording: typeof value.introductionRecording === "string" ? value.introductionRecording : null,
     introductionRecordingDuration: typeof value.introductionRecordingDuration === "number" ? Math.max(0, value.introductionRecordingDuration) : null,
+    introductionRecordingOriginal: typeof value.introductionRecordingOriginal === "string" ? value.introductionRecordingOriginal : typeof value.introductionRecording === "string" ? value.introductionRecording : null,
+    introductionRecordingOriginalDuration: typeof value.introductionRecordingOriginalDuration === "number" ? Math.max(0, value.introductionRecordingOriginalDuration) : typeof value.introductionRecordingDuration === "number" ? Math.max(0, value.introductionRecordingDuration) : null,
+    introductionRecordingTakes: normalizeRecordingTakes(value.introductionRecordingTakes, typeof value.introductionRecording === "string" ? value.introductionRecording : null, typeof value.introductionRecordingDuration === "number" ? value.introductionRecordingDuration : null, "introduction"),
+    introductionRecordingClips: normalizeRecordingClips(value.introductionRecordingClips, normalizeRecordingTakes(value.introductionRecordingTakes, typeof value.introductionRecording === "string" ? value.introductionRecording : null, typeof value.introductionRecordingDuration === "number" ? value.introductionRecordingDuration : null, "introduction"), "introduction"),
     introductionVoiceSource: value.introductionVoiceSource === "recording" || (!value.introductionVoiceSource && value.introductionRecording) ? "recording" : "ai",
     introductionMusic: typeof value.introductionMusic === "string" ? value.introductionMusic : null,
     introductionMusicDuration: typeof value.introductionMusicDuration === "number" && Number.isFinite(value.introductionMusicDuration) && value.introductionMusicDuration > 0
@@ -534,6 +640,10 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
     conclusionAudioRate: typeof value.conclusionAudioRate === "number" ? value.conclusionAudioRate : null,
     conclusionRecording: typeof value.conclusionRecording === "string" ? value.conclusionRecording : null,
     conclusionRecordingDuration: typeof value.conclusionRecordingDuration === "number" ? Math.max(0, value.conclusionRecordingDuration) : null,
+    conclusionRecordingOriginal: typeof value.conclusionRecordingOriginal === "string" ? value.conclusionRecordingOriginal : typeof value.conclusionRecording === "string" ? value.conclusionRecording : null,
+    conclusionRecordingOriginalDuration: typeof value.conclusionRecordingOriginalDuration === "number" ? Math.max(0, value.conclusionRecordingOriginalDuration) : typeof value.conclusionRecordingDuration === "number" ? Math.max(0, value.conclusionRecordingDuration) : null,
+    conclusionRecordingTakes: normalizeRecordingTakes(value.conclusionRecordingTakes, typeof value.conclusionRecording === "string" ? value.conclusionRecording : null, typeof value.conclusionRecordingDuration === "number" ? value.conclusionRecordingDuration : null, "conclusion"),
+    conclusionRecordingClips: normalizeRecordingClips(value.conclusionRecordingClips, normalizeRecordingTakes(value.conclusionRecordingTakes, typeof value.conclusionRecording === "string" ? value.conclusionRecording : null, typeof value.conclusionRecordingDuration === "number" ? value.conclusionRecordingDuration : null, "conclusion"), "conclusion"),
     conclusionVoiceSource: value.conclusionVoiceSource === "recording" || (!value.conclusionVoiceSource && value.conclusionRecording) ? "recording" : "ai",
     introductionImages: Array.isArray(value.introductionImages)
       ? value.introductionImages.filter((image): image is string => typeof image === "string").slice(0, 60)
