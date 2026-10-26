@@ -198,14 +198,15 @@
 .preview-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 11px; color: #898679; font-size: 8px; }
 .preview-tools > span:first-child { color: #aaa28d; font-weight: 700; letter-spacing: .1em; }
 .preview-tools > span:last-child { min-width: 25px; text-align: right; }
-.preview-switches { min-width: 0; max-width: calc(100% - 106px); display: flex; flex: 1; gap: 3px; overflow-x: auto; padding: 2px; border: 1px solid #35362e; border-radius: 3px; background: #141610; }
+.preview-switches { min-width: 0; max-width: calc(100% - 174px); display: flex; flex: 1; gap: 3px; overflow-x: auto; padding: 2px; border: 1px solid #35362e; border-radius: 3px; background: #141610; }
 .preview-switches button { flex: 0 0 auto; min-height: 22px; padding: 0 8px; border: 0; border-radius: 2px; background: transparent; color: #929083; font-size: 8px; cursor: pointer; }
 .preview-switches button:hover { color: #e4d4a5; }.preview-switches button.active { background: #3b3525; color: #e0c878; }
+.preview-conclusion-button { flex: 0 0 auto; min-height: 26px; padding: 0 9px; border: 1px solid #6f603c; border-radius: 3px; background: #24251f; color: #b6a97b; font-size: 8px; cursor: pointer; }.preview-conclusion-button:hover, .preview-conclusion-button.active { border-color: #b79a50; background: #3b3525; color: #e0c878; }
 .timeline { display: flex; gap: 5px; overflow-x: auto; margin-top: 11px; padding-bottom: 3px; scrollbar-color: #65583b #1a1c17; }
 .timeline-intro { flex: 0 0 44px; height: 34px; display: grid; align-content: center; justify-items: center; grid-gap: 3px; gap: 3px; border: 1px solid #66593b; border-radius: 2px; background: #262319; color: #d1b66a; }
 .timeline-intro span { font-size: 7px; letter-spacing: .06em; }
 .timeline-intro i { color: #b6ad94; font-size: 7px; font-style: normal; }
-.timeline-conclusion { flex: 0 0 48px; height: 34px; display: grid; align-content: center; justify-items: center; gap: 3px; border: 1px solid #66593b; border-radius: 2px; background: #262319; color: #d1b66a; }
+.timeline-conclusion { flex: 0 0 48px; height: 34px; display: grid; align-content: center; justify-items: center; gap: 3px; padding: 0; border: 1px solid #66593b; border-radius: 2px; background: #262319; color: #d1b66a; font: inherit; cursor: pointer; }.timeline-conclusion:hover, .timeline-conclusion.chosen { border-color: #b79a50; background: #3b3525; color: #e0c878; }
 .timeline-conclusion span, .timeline-conclusion i { font-size: 7px; font-style: normal; }
 .timeline-conclusion i { color: #b6ad94; }
 .timeline-gap { flex: 0 0 42px; height: 34px; display: grid; align-content: center; justify-items: center; gap: 3px; color: #8f8875; }

@@ -5,9 +5,11 @@ import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   answerDisplayFrames,
+  CONCLUSION_VOICE_DELAY_FRAMES,
   conclusionDurationFrames,
   conclusionNarration,
   defaultProject,
+  ENDING_PAUSE_FRAMES,
   introductionDurationFrames,
   introductionNarration,
   INTRODUCTION_QUESTION_GAP_FRAMES,
@@ -77,7 +79,7 @@ export default function Home() {
   const [voiceProgress, setVoiceProgress] = useState("");
   const [renderStatus, setRenderStatus] = useState<RenderStatus | null>(null);
   const [renderStarting, setRenderStarting] = useState(false);
-  const [previewQuestion, setPreviewQuestion] = useState<number | "all">("all");
+  const [previewQuestion, setPreviewQuestion] = useState<number | "all" | "conclusion">("all");
   const [openNavGroup, setOpenNavGroup] = useState<"musiques" | null>(null);
   const [mediaBusy, setMediaBusy] = useState("");
   const [countdownPreviewPlaying, setCountdownPreviewPlaying] = useState(false);
@@ -184,8 +186,20 @@ export default function Home() {
 
   useEffect(() => {
     if (!loaded || previewQuestion === "all") return;
+    if (previewQuestion === "conclusion") {
+      const questions = project.questions.filter((question) => question.enabled !== false);
+      const conclusionStart = questionVideoDuration(
+        questions,
+        introductionDurationFrames(project),
+        conclusionDurationFrames(project) > 0 ? ENDING_PAUSE_FRAMES : 0,
+        project.voice,
+        project.speechRate,
+      );
+      playerRef.current?.seekTo(conclusionStart);
+      return;
+    }
     playerRef.current?.seekTo(Math.round(project.introductionDurationSeconds * FPS) + INTRODUCTION_QUESTION_GAP_FRAMES);
-  }, [loaded, previewQuestion, project.introductionDurationSeconds]);
+  }, [loaded, previewQuestion, project]);
 
   const updateProject = useCallback((patch: Partial<QuizProject>) => {
     setProject((current) => ({ ...current, ...patch }));
@@ -495,16 +509,19 @@ export default function Home() {
 
   const navigate = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   const activeQuestions = project.questions.filter((question) => question.enabled !== false);
-  const visibleQuestions = previewQuestion === "all" ? activeQuestions : [activeQuestions[previewQuestion]].filter(Boolean);
+  const visibleQuestions = typeof previewQuestion === "number" ? [activeQuestions[previewQuestion]].filter(Boolean) : activeQuestions;
   const previewProject = { ...project, questions: activeQuestions };
-  const questionOffset = previewQuestion === "all" ? 0 : previewQuestion;
+  const questionOffset = typeof previewQuestion === "number" ? previewQuestion : 0;
   const introVoiceReady = !project.introductionText.trim() || Boolean(introductionNarration(project));
   const conclusionVoiceReady = !project.conclusionText.trim() || Boolean(conclusionNarration(project));
   const voiceTotal = activeQuestions.length * 2 + Number(Boolean(project.introductionText.trim() || project.introductionRecording || project.introductionAudio)) + Number(Boolean(project.conclusionText.trim() || project.conclusionRecording || project.conclusionAudio));
-  const previewConclusionFrames = previewQuestion === "all" ? conclusionDurationFrames(project) : 0;
-  const previewDuration = questionVideoDuration(visibleQuestions, introductionDurationFrames(project), previewConclusionFrames, project.voice, project.speechRate);
+  const previewConclusionFrames = typeof previewQuestion !== "number" ? conclusionDurationFrames(project) : 0;
+  const previewEndingDelayFrames = previewConclusionFrames > 0
+    ? ENDING_PAUSE_FRAMES + (conclusionNarration(project) ? CONCLUSION_VOICE_DELAY_FRAMES : 0)
+    : 0;
+  const previewDuration = questionVideoDuration(visibleQuestions, introductionDurationFrames(project), previewConclusionFrames + previewEndingDelayFrames, project.voice, project.speechRate);
   const voiceFilesCount = activeQuestions.reduce((total, question) => total + Number(Boolean(question.questionRecording || question.questionAudio)) + Number(Boolean(question.answerRecording || question.answerAudio)), Number(Boolean(project.introductionRecording || project.introductionAudio)) + Number(Boolean(project.conclusionRecording || project.conclusionAudio)));
-  const previewKey = `${previewQuestion === "all" ? "all" : `question-${previewQuestion}`}-${project.voiceVolume}-${project.countdownSound || "no-countdown-sound"}-${project.countdownSoundVolume}-${project.answerSound || "no-answer-sound"}-${project.answerSoundVolume}-${project.introductionMusic || "no-intro-music"}-${project.introductionMusicDuration || "unknown-intro-duration"}-${project.introductionMusicVolume}-${project.conclusionMusic || "theme-music"}-${project.conclusionMusicVolume}-${project.introductionRecording || ""}-${project.conclusionRecording || ""}-${project.questions.map((q) => `${q.questionRecording || ""}:${q.answerRecording || ""}`).join("|")}`;
+  const previewKey = `${previewQuestion === "all" ? "all" : previewQuestion === "conclusion" ? "conclusion" : `question-${previewQuestion}`}-${project.voiceVolume}-${project.countdownSound || "no-countdown-sound"}-${project.countdownSoundVolume}-${project.answerSound || "no-answer-sound"}-${project.answerSoundVolume}-${project.introductionMusic || "no-intro-music"}-${project.introductionMusicDuration || "unknown-intro-duration"}-${project.introductionMusicVolume}-${project.conclusionMusic || "theme-music"}-${project.conclusionMusicVolume}-${project.introductionRecording || ""}-${project.conclusionRecording || ""}-${project.questions.map((q) => `${q.questionRecording || ""}:${q.answerRecording || ""}`).join("|")}`;
 
 
   return (
@@ -643,14 +660,14 @@ export default function Home() {
               <section className="panel preview-panel" id="preview">
                 <div className="panel-heading preview-heading"><div><span className="panel-step">06</span><div><h2>Prévisualisation</h2><p>La composition Remotion sera rendue en MP4.</p></div></div><span className="resolution-chip">16:9</span></div>
                 <div className="preview-frame">{loaded ? <Player key={previewKey} ref={playerRef} component={QuizVideo} inputProps={{ project: previewProject, questions: visibleQuestions, questionOffset }} durationInFrames={previewDuration} compositionWidth={1920} compositionHeight={1080} fps={30} controls clickToPlay loop={false} errorFallback={({ error }) => <div className="preview-error"><strong>Erreur de prévisualisation</strong><span>{error.message}</span></div>} style={{ width: "100%" }} /> : <div className="preview-loading">Ouverture du projet…</div>}</div>
-                <div className="preview-tools"><span>APERÇU</span><div className="preview-switches"><button className={previewQuestion === "all" ? "active" : ""} onClick={() => setPreviewQuestion("all")}>Tout le quiz</button>{activeQuestions.map((question, index) => <button className={previewQuestion === index ? "active" : ""} key={question.id} onClick={() => setPreviewQuestion(index)}>Q{index + 1}</button>)}</div><span>{(previewDuration / 30).toFixed(0)} s</span></div>
-                <div className="timeline" aria-label="Timeline du quiz"><div className="timeline-intro"><span>INTRO</span><i>{(introductionDurationFrames(project) / FPS).toFixed(1)} s</i></div><div className="timeline-gap"><span>PAUSE</span><i>1 s</i></div>{activeQuestions.map((question, index) => <button key={question.id} className={`timeline-question ${previewQuestion === index ? "chosen" : ""}`} onClick={() => setPreviewQuestion(index)}>{question.startsTheme && <b title="Nouveau thème avant cette question">T ·</b>}<span>Q{index + 1}</span><i>{questionDurationFrames(question, project.voice, project.speechRate) / FPS} s</i><i>{answerDisplayFrames(question, project.voice, project.speechRate) / FPS} s</i>{index < activeQuestions.length - 1 && <i>{transitionFramesAfter(activeQuestions, index) / 30} s</i>}</button>)}{previewQuestion === "all" && conclusionDurationFrames(project) > 0 && <div className="timeline-conclusion"><span>FIN</span><i>{(conclusionDurationFrames(project) / FPS).toFixed(1)} s</i></div>}</div>
+                <div className="preview-tools"><span>APERÇU</span><div className="preview-switches"><button className={previewQuestion === "all" ? "active" : ""} onClick={() => setPreviewQuestion("all")}>Tout le quiz</button>{activeQuestions.map((question, index) => <button className={previewQuestion === index ? "active" : ""} key={question.id} onClick={() => setPreviewQuestion(index)}>Q{index + 1}</button>)}</div>{conclusionDurationFrames(project) > 0 && <button type="button" className={`preview-conclusion-button${previewQuestion === "conclusion" ? " active" : ""}`} onClick={() => setPreviewQuestion("conclusion")}>Conclusion</button>}<span>{(previewDuration / 30).toFixed(0)} s</span></div>
+                <div className="timeline" aria-label="Timeline du quiz"><div className="timeline-intro"><span>INTRO</span><i>{(introductionDurationFrames(project) / FPS).toFixed(1)} s</i></div><div className="timeline-gap"><span>PAUSE</span><i>1 s</i></div>{activeQuestions.map((question, index) => <button key={question.id} className={`timeline-question ${previewQuestion === index ? "chosen" : ""}`} onClick={() => setPreviewQuestion(index)}>{question.startsTheme && <b title="Nouveau thème avant cette question">T ·</b>}<span>Q{index + 1}</span><i>{questionDurationFrames(question, project.voice, project.speechRate) / FPS} s</i><i>{answerDisplayFrames(question, project.voice, project.speechRate) / FPS} s</i>{index < activeQuestions.length - 1 && <i>{transitionFramesAfter(activeQuestions, index) / 30} s</i>}</button>)}{(previewQuestion === "all" || previewQuestion === "conclusion") && conclusionDurationFrames(project) > 0 && <button type="button" className={`timeline-conclusion${previewQuestion === "conclusion" ? " chosen" : ""}`} title="Prévisualiser la conclusion" onClick={() => setPreviewQuestion("conclusion")}><span>FIN</span><i>{(conclusionDurationFrames(project) / FPS).toFixed(1)} s</i></button>}</div>
               </section>
 
               <section className="panel export-panel" id="export">
                 <div className="panel-heading"><div><span className="panel-step">07</span><div><h2>Rendu vidéo</h2><p>Encodage local · H.264 · MP4 avec narration.</p></div></div></div>
                 <div className="export-summary"><span><b>1920 × 1080</b><small>Résolution</small></span><span><b>30 FPS</b><small>Fréquence</small></span><span><b>{(previewDuration / 30).toFixed(0)} s</b><small>Durée choisie</small></span></div>
-                <div className="export-buttons"><button className="button-outline" disabled={renderStarting || renderStatus?.stage === "rendering" || renderStatus?.stage === "preparing"} onClick={() => void startRender("question", previewQuestion === "all" ? 0 : previewQuestion)}>Rendre {previewQuestion === "all" ? "la question 1" : `la question ${previewQuestion + 1}`}</button><button className="button-gold" disabled={renderStarting || renderStatus?.stage === "rendering" || renderStatus?.stage === "preparing"} onClick={() => void startRender("all")}><span>▶</span> Rendre le quiz complet</button></div>
+                <div className="export-buttons"><button className="button-outline" disabled={renderStarting || renderStatus?.stage === "rendering" || renderStatus?.stage === "preparing"} onClick={() => void startRender("question", typeof previewQuestion === "number" ? previewQuestion : 0)}>Rendre {typeof previewQuestion === "number" ? `la question ${previewQuestion + 1}` : "la question 1"}</button><button className="button-gold" disabled={renderStarting || renderStatus?.stage === "rendering" || renderStatus?.stage === "preparing"} onClick={() => void startRender("all")}><span>▶</span> Rendre le quiz complet</button></div>
                 {renderStarting && <p className="render-message">Lancement du rendu local…</p>}
                 {renderStatus && <div className={`render-state ${renderStatus.stage === "failed" ? "render-failed" : ""}`}><div className="render-state-line"><strong>{renderStatus.message}</strong><span>{renderStatus.progress}%</span></div><div className="progress-track"><div style={{ width: `${renderStatus.progress}%` }} /></div>{renderStatus.stage === "failed" && <p>{renderStatus.error}</p>}{renderStatus.stage === "completed" && <button className="button-gold save-mp4" onClick={() => void saveRenderedVideo()}>Enregistrer le MP4 à l’emplacement choisi</button>}</div>}
                 <p className="panel-note">Une copie est conservée dans <code>data/exports</code>. Le rendu se fait sur ce PC avec Chrome/Edge et FFmpeg fourni par Remotion.</p>
