@@ -122,11 +122,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Enregistrez la narration ou générez la voix IA de conclusion avant l’export." }, { status: 400 });
   }
   const missingAudio = selected.some((question) =>
-    !narrationAudio(question, "question", project.voice, project.speechRate) || !narrationAudio(question, "answer", project.voice, project.speechRate) ||
-    (question.answerCommentary.trim() && !narrationAudio(question, "commentary", project.voice, project.speechRate))
+    !narrationAudio(question, "question", project.voice, project.speechRate) || !narrationAudio(question, "answer", project.voice, project.speechRate)
   );
   if (missingAudio) {
-    return NextResponse.json({ error: "Enregistrez ou générez les narrations manquantes des questions, réponses et commentaires." }, { status: 400 });
+    return NextResponse.json({ error: "Enregistrez ou générez les narrations manquantes des questions et réponses." }, { status: 400 });
   }
   if ([...renderJobs.values()].some((item) => item.stage === "preparing" || item.stage === "rendering" || item.stage === "queued")) {
     return NextResponse.json({ error: "Un rendu est déjà en cours." }, { status: 409 });

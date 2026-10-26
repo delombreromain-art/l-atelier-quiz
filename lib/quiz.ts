@@ -3,7 +3,6 @@ export const DEFAULT_QUESTION_SECONDS = 10;
 export const LONG_QUESTION_SECONDS = 15;
 export const LONG_QUESTION_CHARACTER_LIMIT = 150;
 export const ANSWER_FRAMES = 4 * FPS;
-export const ANSWER_COMMENTARY_GAP_FRAMES = FPS;
 export const TRANSITION_FRAMES = 2 * FPS;
 export const THEME_FRAMES = 4 * FPS;
 export const DEFAULT_INTRODUCTION_SECONDS = 20;
@@ -13,7 +12,7 @@ export const DEFAULT_CONCLUSION_SECONDS = 10;
 export const MIN_CONCLUSION_SECONDS = 4;
 export const MAX_CONCLUSION_SECONDS = 20;
 export const INTRODUCTION_FRAMES = DEFAULT_INTRODUCTION_SECONDS * FPS;
-export const INTRODUCTION_QUESTION_GAP_FRAMES = 2 * FPS;
+export const INTRODUCTION_QUESTION_GAP_FRAMES = FPS;
 export const MAX_QUESTIONS = 60;
 export const MAX_QUESTION_LIBRARY = 5000;
 
@@ -95,6 +94,7 @@ export type QuizProject = {
   introductionRecordingDuration: number | null;
   introductionVoiceSource: VoiceSource;
   introductionMusic: string | null;
+  introductionMusicDuration: number | null;
   introductionMusicVolume: number;
   conclusionText: string;
   conclusionBackgroundImage: string | null;
@@ -254,6 +254,7 @@ export const defaultProject: QuizProject = {
   introductionRecordingDuration: null,
   introductionVoiceSource: "ai",
   introductionMusic: null,
+  introductionMusicDuration: null,
   introductionMusicVolume: 35,
   conclusionText: "",
   conclusionBackgroundImage: null,
@@ -322,13 +323,9 @@ export const questionDurationFrames = (question: QuizQuestion, voice?: VoiceId, 
   return Math.max(base, Math.ceil((narrationAudio(question, "question", voice, rate)?.duration ?? 0) * FPS));
 };
 
-export const answerNarrationFrames = (answerDuration: number | null, commentaryDuration: number | null) =>
-  Math.ceil((answerDuration ?? 0) * FPS) + ANSWER_COMMENTARY_GAP_FRAMES + Math.ceil((commentaryDuration ?? 0) * FPS);
-
 export const answerDisplayFrames = (question: QuizQuestion, voice?: VoiceId, rate?: number) => {
   const answerDuration = narrationAudio(question, "answer", voice, rate)?.duration ?? 0;
-  const commentaryDuration = question.answerCommentary.trim() ? narrationAudio(question, "commentary", voice, rate)?.duration ?? 0 : 0;
-  return Math.max(ANSWER_FRAMES, answerNarrationFrames(answerDuration, commentaryDuration));
+  return Math.max(ANSWER_FRAMES, Math.ceil(answerDuration * FPS));
 };
 
 export const transitionFramesAfter = (questions: QuizQuestion[], index: number) => {
@@ -510,6 +507,9 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
     introductionRecordingDuration: typeof value.introductionRecordingDuration === "number" ? Math.max(0, value.introductionRecordingDuration) : null,
     introductionVoiceSource: value.introductionVoiceSource === "recording" || (!value.introductionVoiceSource && value.introductionRecording) ? "recording" : "ai",
     introductionMusic: typeof value.introductionMusic === "string" ? value.introductionMusic : null,
+    introductionMusicDuration: typeof value.introductionMusicDuration === "number" && Number.isFinite(value.introductionMusicDuration) && value.introductionMusicDuration > 0
+      ? value.introductionMusicDuration
+      : null,
     introductionMusicVolume: typeof value.introductionMusicVolume === "number"
       ? Math.min(100, Math.max(0, value.introductionMusicVolume))
       : defaultProject.introductionMusicVolume,

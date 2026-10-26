@@ -274,9 +274,9 @@ export default function Home() {
     try {
       const body = new FormData(); body.set("file", file);
       const response = await fetch("/api/music", { method: "POST", body });
-      const result = await response.json() as { path?: string; error?: string };
+      const result = await response.json() as { path?: string; duration?: number | null; error?: string };
       if (!response.ok || !result.path) throw new Error(result.error || "Import de la musique d’introduction impossible.");
-      updateProject({ introductionMusic: result.path });
+      updateProject({ introductionMusic: result.path, introductionMusicDuration: result.duration ?? null });
       setFeedback(`${file.name} ajoutée pour l’introduction.`);
     } catch (error) { setFeedback(error instanceof Error ? error.message : "Import de la musique d’introduction impossible."); }
     finally { setMediaBusy(""); }
@@ -359,10 +359,10 @@ export default function Home() {
     updateProject({ answerSoundVolume });
   };
 
-  const generateVoice = useCallback(async (index: number, part: "question" | "answer" | "commentary") => {
+  const generateVoice = useCallback(async (index: number, part: "question" | "answer") => {
     const question = project.questions[index];
-    const text = part === "question" ? question.prompt : part === "answer" ? question.answer : question.answerCommentary;
-    if (!text.trim()) throw new Error(`Ajoutez d’abord ${part === "question" ? "la question" : part === "answer" ? "la réponse" : "le commentaire"} ${index + 1}.`);
+    const text = part === "question" ? question.prompt : [question.answer, question.answerCommentary].filter((value) => value.trim()).join(". ");
+    if (!text.trim()) throw new Error(`Ajoutez d’abord ${part === "question" ? "la question" : "la réponse"} ${index + 1}.`);
     const response = await fetch("/api/voice", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text, voice: project.voice, rate: project.speechRate }),
@@ -373,8 +373,6 @@ export default function Home() {
       updateQuestion(index, { questionAudio: result.audio, questionAudioVoice: project.voice, questionAudioRate: project.speechRate, questionAudioDuration: result.duration });
     } else if (part === "answer") {
       updateQuestion(index, { answerAudio: result.audio, answerAudioVoice: project.voice, answerAudioRate: project.speechRate, answerAudioDuration: result.duration });
-    } else {
-      updateQuestion(index, { commentaryAudio: result.audio, commentaryAudioVoice: project.voice, commentaryAudioRate: project.speechRate, commentaryAudioDuration: result.duration });
     }
     return result;
   }, [project, updateQuestion]);
@@ -426,7 +424,7 @@ export default function Home() {
   const generateAllVoices = async () => {
     const activeQuestions = project.questions.filter((question) => question.enabled !== false);
     setVoiceBusy(true); setFeedback(""); let complete = 0;
-    const total = activeQuestions.reduce((sum, question) => sum + Number(Boolean(question.prompt.trim() && !question.questionRecording)) + Number(Boolean(question.answer.trim() && !question.answerRecording)) + Number(Boolean(question.answerCommentary.trim() && !question.commentaryRecording)), Number(Boolean(project.introductionText.trim() && !project.introductionRecording)) + Number(Boolean(project.conclusionText.trim() && !project.conclusionRecording)));
+    const total = activeQuestions.reduce((sum, question) => sum + Number(Boolean(question.prompt.trim() && !question.questionRecording)) + Number(Boolean(question.answer.trim() && !question.answerRecording)), Number(Boolean(project.introductionText.trim() && !project.introductionRecording)) + Number(Boolean(project.conclusionText.trim() && !project.conclusionRecording)));
     try {
       if (project.introductionText.trim() && !project.introductionRecording) {
         setVoiceProgress(`Voix ${complete + 1} sur ${total} · introduction`);
@@ -434,10 +432,9 @@ export default function Home() {
       }
       for (let index = 0; index < project.questions.length; index += 1) {
         if (project.questions[index].enabled === false) continue;
-        const parts: Array<"question" | "answer" | "commentary"> = [];
+        const parts: Array<"question" | "answer"> = [];
         if (!project.questions[index].questionRecording) parts.push("question");
         if (!project.questions[index].answerRecording) parts.push("answer");
-        if (project.questions[index].answerCommentary.trim() && !project.questions[index].commentaryRecording) parts.push("commentary");
         for (const part of parts) {
           setVoiceProgress(`Voix ${complete + 1} sur ${total} · question ${index + 1}`);
           await generateVoice(index, part); complete += 1;
@@ -459,8 +456,8 @@ export default function Home() {
     if (!introVoiceReady) { setFeedback("Choisissez une voix disponible pour l’introduction, ou enregistrez-la."); navigate("introduction"); return; }
     const conclusionVoiceReady = !project.conclusionText.trim() || Boolean(conclusionNarration(project));
     if (scope === "all" && !conclusionVoiceReady) { setFeedback("Enregistrez la narration ou générez la voix IA de conclusion."); navigate("conclusion"); return; }
-    const audioReady = selected.every((question) => narrationAudio(question, "question", project.voice, project.speechRate) && narrationAudio(question, "answer", project.voice, project.speechRate) && (!question.answerCommentary.trim() || narrationAudio(question, "commentary", project.voice, project.speechRate)));
-    if (!audioReady) { setFeedback("Générez les voix manquantes avec la voix sélectionnée. Les commentaires saisis doivent aussi avoir leur narration."); navigate("voix"); return; }
+    const audioReady = selected.every((question) => narrationAudio(question, "question", project.voice, project.speechRate) && narrationAudio(question, "answer", project.voice, project.speechRate));
+    if (!audioReady) { setFeedback("Générez les voix manquantes avec la voix sélectionnée."); navigate("voix"); return; }
     setRenderStarting(true); setRenderStatus(null); setFeedback("");
     try {
       const response = await fetch("/api/render", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ project, scope, questionIndex: index }) });
@@ -498,11 +495,11 @@ export default function Home() {
   const questionOffset = previewQuestion === "all" ? 0 : previewQuestion;
   const introVoiceReady = !project.introductionText.trim() || Boolean(introductionNarration(project));
   const conclusionVoiceReady = !project.conclusionText.trim() || Boolean(conclusionNarration(project));
-  const voiceTotal = activeQuestions.length * 2 + activeQuestions.filter((question) => question.answerCommentary.trim() || question.commentaryRecording || question.commentaryAudio).length + Number(Boolean(project.introductionText.trim() || project.introductionRecording || project.introductionAudio)) + Number(Boolean(project.conclusionText.trim() || project.conclusionRecording || project.conclusionAudio));
+  const voiceTotal = activeQuestions.length * 2 + Number(Boolean(project.introductionText.trim() || project.introductionRecording || project.introductionAudio)) + Number(Boolean(project.conclusionText.trim() || project.conclusionRecording || project.conclusionAudio));
   const previewConclusionFrames = previewQuestion === "all" ? conclusionDurationFrames(project) : 0;
   const previewDuration = questionVideoDuration(visibleQuestions, introductionDurationFrames(project), previewConclusionFrames, project.voice, project.speechRate);
-  const voiceFilesCount = activeQuestions.reduce((total, question) => total + Number(Boolean(question.questionRecording || question.questionAudio)) + Number(Boolean(question.answerRecording || question.answerAudio)) + Number(Boolean(question.commentaryRecording || question.commentaryAudio)), Number(Boolean(project.introductionRecording || project.introductionAudio)) + Number(Boolean(project.conclusionRecording || project.conclusionAudio)));
-  const previewKey = `${previewQuestion === "all" ? "all" : `question-${previewQuestion}`}-${project.voiceVolume}-${project.countdownSound || "no-countdown-sound"}-${project.countdownSoundVolume}-${project.answerSound || "no-answer-sound"}-${project.answerSoundVolume}-${project.introductionMusic || "no-intro-music"}-${project.introductionMusicVolume}-${project.conclusionMusic || "theme-music"}-${project.conclusionMusicVolume}-${project.introductionRecording || ""}-${project.conclusionRecording || ""}-${project.questions.map((q) => `${q.questionRecording || ""}:${q.answerRecording || ""}:${q.commentaryRecording || ""}`).join("|")}`;
+  const voiceFilesCount = activeQuestions.reduce((total, question) => total + Number(Boolean(question.questionRecording || question.questionAudio)) + Number(Boolean(question.answerRecording || question.answerAudio)), Number(Boolean(project.introductionRecording || project.introductionAudio)) + Number(Boolean(project.conclusionRecording || project.conclusionAudio)));
+  const previewKey = `${previewQuestion === "all" ? "all" : `question-${previewQuestion}`}-${project.voiceVolume}-${project.countdownSound || "no-countdown-sound"}-${project.countdownSoundVolume}-${project.answerSound || "no-answer-sound"}-${project.answerSoundVolume}-${project.introductionMusic || "no-intro-music"}-${project.introductionMusicDuration || "unknown-intro-duration"}-${project.introductionMusicVolume}-${project.conclusionMusic || "theme-music"}-${project.conclusionMusicVolume}-${project.introductionRecording || ""}-${project.conclusionRecording || ""}-${project.questions.map((q) => `${q.questionRecording || ""}:${q.answerRecording || ""}`).join("|")}`;
 
 
   return (
@@ -566,6 +563,7 @@ export default function Home() {
                 <div className="panel-heading"><div><span className="panel-step">01</span><div><h2>Introduction de la vidéo</h2><p>Composez le fond et les calques PNG transparents de l’introduction.</p></div></div></div>
                 <label className="field-label">TEXTE LU PAR LA VOIX OFF <span>FACULTATIF · 1 000 CARACTÈRES MAXIMUM</span><textarea value={project.introductionText} maxLength={1000} rows={4} placeholder="Bienvenue dans ce quiz… Présentez le thème et invitez les spectateurs à jouer." onChange={(event) => updateProject({ introductionText: event.target.value, introductionAudio: null, introductionAudioDuration: null, introductionAudioVoice: null, introductionAudioRate: null })} /></label>
                 <Slider label="Durée de l’introduction" value={project.introductionDurationSeconds} min={MIN_INTRODUCTION_SECONDS} max={MAX_INTRODUCTION_SECONDS} unit=" s" onChange={(introductionDurationSeconds) => updateProject({ introductionDurationSeconds })} />
+                <p className="duration-note">La durée réelle augmente si la narration dépasse le réglage choisi.</p>
                 <IntroductionEditor
                   background={project.introductionImage || project.background}
                   backgroundIsFallback={!project.introductionImage && Boolean(project.background)}
@@ -577,8 +575,8 @@ export default function Home() {
                   onUpdateLayers={updateIntroductionLayers}
                 />
                 <div className="music-field conclusion-music-field" id="musique-introduction">
-                  <div className="music-heading"><div><strong>MUSIQUE D’INTRODUCTION</strong><small>{project.introductionMusic ? "Cette piste remplace la musique du thème pendant l’introduction." : "Sans piste dédiée, la musique du thème joue dès le début."}</small></div><label className="upload-button">{mediaBusy === "introduction-music" ? "Import…" : project.introductionMusic ? "Remplacer la musique" : "Importer une musique"}<input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/wave,audio/x-wav,audio/mp4,audio/x-m4a,audio/aac,audio/ogg,audio/webm,.mp3,.wav,.m4a,.aac,.ogg,.webm" disabled={Boolean(mediaBusy)} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadIntroductionMusic(file); event.currentTarget.value = ""; }} /></label>{project.introductionMusic && <button className="text-button" onClick={() => updateProject({ introductionMusic: null })}>Retirer</button>}</div>
-                  {project.introductionMusic && <><div className="conclusion-music-preview-row"><button type="button" className="countdown-preview-button" onClick={() => void previewIntroductionMusic()}>{introductionMusicPreviewPlaying ? "■ Arrêter l’écoute" : "▶ Écouter la musique"}</button><span>Le niveau de l’aperçu suit cette jauge.</span><audio ref={introductionMusicAudioRef} className="countdown-audio-source" preload="metadata" src={assetUrl(project.introductionMusic) || undefined} onPlay={() => setIntroductionMusicPreviewPlaying(true)} onPause={() => setIntroductionMusicPreviewPlaying(false)} onEnded={() => setIntroductionMusicPreviewPlaying(false)} aria-label="Aperçu de la musique d’introduction" /></div><Slider label="Volume de la musique d’introduction" value={project.introductionMusicVolume} min={0} max={100} unit=" %" onChange={updateIntroductionMusicVolume} /></>}
+                  <div className="music-heading"><div><strong>MUSIQUE D’INTRODUCTION</strong><small>{project.introductionMusic ? "La piste joue une fois, puis laisse place à la musique du thème." : "Sans piste dédiée, la musique du thème joue dès le début."}</small></div><label className="upload-button">{mediaBusy === "introduction-music" ? "Import…" : project.introductionMusic ? "Remplacer la musique" : "Importer une musique"}<input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/wave,audio/x-wav,audio/mp4,audio/x-m4a,audio/aac,audio/ogg,audio/webm,.mp3,.wav,.m4a,.aac,.ogg,.webm" disabled={Boolean(mediaBusy)} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadIntroductionMusic(file); event.currentTarget.value = ""; }} /></label>{project.introductionMusic && <button className="text-button" onClick={() => updateProject({ introductionMusic: null, introductionMusicDuration: null })}>Retirer</button>}</div>
+                  {project.introductionMusic && <><div className="conclusion-music-preview-row"><button type="button" className="countdown-preview-button" onClick={() => void previewIntroductionMusic()}>{introductionMusicPreviewPlaying ? "■ Arrêter l’écoute" : "▶ Écouter la musique"}</button><span>Le niveau de l’aperçu suit cette jauge.</span><audio ref={introductionMusicAudioRef} className="countdown-audio-source" preload="metadata" src={assetUrl(project.introductionMusic) || undefined} onLoadedMetadata={(event) => { const duration = event.currentTarget.duration; if (Number.isFinite(duration) && duration > 0 && project.introductionMusicDuration !== duration) updateProject({ introductionMusicDuration: duration }); }} onPlay={() => setIntroductionMusicPreviewPlaying(true)} onPause={() => setIntroductionMusicPreviewPlaying(false)} onEnded={() => setIntroductionMusicPreviewPlaying(false)} aria-label="Aperçu de la musique d’introduction" /></div><Slider label="Volume de la musique d’introduction" value={project.introductionMusicVolume} min={0} max={100} unit=" %" onChange={updateIntroductionMusicVolume} /></>}
                 </div>
                 <div className="intro-voice-row"><span className={introVoiceReady ? "voice-done" : project.introductionText.trim() ? "voice-missing" : "voice-done"}>{project.introductionVoiceSource === "recording" && project.introductionRecording ? `Micro sélectionné · ${project.introductionRecordingDuration?.toFixed(1)} s` : project.introductionAudio && introVoiceReady ? `Voix IA sélectionnée · ${project.introductionAudioDuration?.toFixed(1)} s` : project.introductionText.trim() ? "Choisissez IA ou Micro ci-dessous" : "Ajoutez un texte pour créer la voix"}</span><button className="generate-one" disabled={voiceBusy || !project.introductionText.trim()} onClick={() => void generateIntroductionVoice()}>{voiceBusy ? "Génération…" : project.introductionAudio ? "Régénérer la voix IA" : "Générer la voix IA"}</button></div>
                 {project.introductionAudio && <audio className="intro-audio-preview" controls preload="none" src={assetUrl(project.introductionAudio) || undefined} aria-label="Écouter la narration de l’introduction" />}
@@ -614,6 +612,7 @@ export default function Home() {
                 <div className="panel-heading"><div><span className="panel-step">05</span><div><h2>Conclusion de la vidéo</h2><p>Une dernière narration, un fond dédié et jusqu’à trois images superposées réglables.</p></div></div></div>
                 <label className="field-label">TEXTE LU PAR LA VOIX IA <span>NON AFFICHÉ À L’ÉCRAN · 1 000 CARACTÈRES MAXIMUM</span><textarea value={project.conclusionText} maxLength={1000} rows={4} placeholder="Remerciez les participants et invitez-les à revenir…" onChange={(event) => updateProject({ conclusionText: event.target.value, conclusionAudio: null, conclusionAudioDuration: null, conclusionAudioVoice: null, conclusionAudioRate: null })} /></label>
                 <Slider label="Durée de la conclusion" value={project.conclusionDurationSeconds} min={MIN_CONCLUSION_SECONDS} max={MAX_CONCLUSION_SECONDS} unit=" s" onChange={(conclusionDurationSeconds) => updateProject({ conclusionDurationSeconds })} />
+                <p className="duration-note">La durée réelle augmente si la narration dépasse le réglage choisi.</p>
                 <ConclusionEditor
                   backgroundImage={project.conclusionBackgroundImage}
                   images={{ primary: project.conclusionImage, secondary: project.conclusionImage2, tertiary: project.conclusionImage3 }}
@@ -640,7 +639,7 @@ export default function Home() {
                 <div className="panel-heading preview-heading"><div><span className="panel-step">06</span><div><h2>Prévisualisation</h2><p>La composition Remotion sera rendue en MP4.</p></div></div><span className="resolution-chip">16:9</span></div>
                 <div className="preview-frame">{loaded ? <Player key={previewKey} ref={playerRef} component={QuizVideo} inputProps={{ project: previewProject, questions: visibleQuestions, questionOffset }} durationInFrames={previewDuration} compositionWidth={1920} compositionHeight={1080} fps={30} controls clickToPlay loop={false} errorFallback={({ error }) => <div className="preview-error"><strong>Erreur de prévisualisation</strong><span>{error.message}</span></div>} style={{ width: "100%" }} /> : <div className="preview-loading">Ouverture du projet…</div>}</div>
                 <div className="preview-tools"><span>APERÇU</span><div className="preview-switches"><button className={previewQuestion === "all" ? "active" : ""} onClick={() => setPreviewQuestion("all")}>Tout le quiz</button>{activeQuestions.map((question, index) => <button className={previewQuestion === index ? "active" : ""} key={question.id} onClick={() => setPreviewQuestion(index)}>Q{index + 1}</button>)}</div><span>{(previewDuration / 30).toFixed(0)} s</span></div>
-                <div className="timeline" aria-label="Timeline du quiz"><div className="timeline-intro"><span>INTRO</span><i>{(introductionDurationFrames(project) / FPS).toFixed(1)} s</i></div><div className="timeline-gap"><span>PAUSE</span><i>2 s</i></div>{activeQuestions.map((question, index) => <button key={question.id} className={`timeline-question ${previewQuestion === index ? "chosen" : ""}`} onClick={() => setPreviewQuestion(index)}>{question.startsTheme && <b title="Nouveau thème avant cette question">T ·</b>}<span>Q{index + 1}</span><i>{questionDurationFrames(question, project.voice, project.speechRate) / FPS} s</i><i>{answerDisplayFrames(question, project.voice, project.speechRate) / FPS} s</i>{index < activeQuestions.length - 1 && <i>{transitionFramesAfter(activeQuestions, index) / 30} s</i>}</button>)}{previewQuestion === "all" && conclusionDurationFrames(project) > 0 && <div className="timeline-conclusion"><span>FIN</span><i>{(conclusionDurationFrames(project) / FPS).toFixed(1)} s</i></div>}</div>
+                <div className="timeline" aria-label="Timeline du quiz"><div className="timeline-intro"><span>INTRO</span><i>{(introductionDurationFrames(project) / FPS).toFixed(1)} s</i></div><div className="timeline-gap"><span>PAUSE</span><i>1 s</i></div>{activeQuestions.map((question, index) => <button key={question.id} className={`timeline-question ${previewQuestion === index ? "chosen" : ""}`} onClick={() => setPreviewQuestion(index)}>{question.startsTheme && <b title="Nouveau thème avant cette question">T ·</b>}<span>Q{index + 1}</span><i>{questionDurationFrames(question, project.voice, project.speechRate) / FPS} s</i><i>{answerDisplayFrames(question, project.voice, project.speechRate) / FPS} s</i>{index < activeQuestions.length - 1 && <i>{transitionFramesAfter(activeQuestions, index) / 30} s</i>}</button>)}{previewQuestion === "all" && conclusionDurationFrames(project) > 0 && <div className="timeline-conclusion"><span>FIN</span><i>{(conclusionDurationFrames(project) / FPS).toFixed(1)} s</i></div>}</div>
               </section>
 
               <section className="panel export-panel" id="export">

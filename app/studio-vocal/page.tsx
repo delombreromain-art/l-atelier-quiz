@@ -6,7 +6,7 @@ import type { QuizProject, QuizQuestion, VoiceSource } from "@/lib/quiz";
 import { VoiceRecorder, type VoiceRecorderHandle } from "../VoiceRecorder";
 import "../studio.css";
 
-type NarrationKind = "introduction" | "question" | "answer" | "commentary" | "conclusion";
+type NarrationKind = "introduction" | "question" | "answer" | "conclusion";
 type VoiceStep = {
   key: string;
   kind: NarrationKind;
@@ -22,15 +22,14 @@ type VoiceStep = {
 const kindLabels: Record<NarrationKind, string> = {
   introduction: "Introduction",
   question: "Lecture de la question",
-  answer: "Lecture de la bonne réponse",
-  commentary: "Commentaire de la réponse",
+  answer: "Réponse (et commentaire)",
   conclusion: "Conclusion",
 };
 
-const makeQuestionStep = (question: QuizQuestion, index: number, kind: "question" | "answer" | "commentary", project: QuizProject): VoiceStep => ({
+const makeQuestionStep = (question: QuizQuestion, index: number, kind: "question" | "answer", project: QuizProject): VoiceStep => ({
   key: `${question.id}:${kind}`,
   kind,
-  text: kind === "question" ? question.prompt : kind === "answer" ? question.answer : question.answerCommentary,
+  text: kind === "question" ? question.prompt : [question.answer, question.answerCommentary].filter((part) => part.trim()).join("\n\n"),
   questionId: question.id,
   questionNumber: index + 1,
   path: question[`${kind}Recording`],
@@ -45,7 +44,6 @@ const buildSteps = (project: QuizProject): VoiceStep[] => {
   project.questions.forEach((question, index) => {
     if (question.prompt.trim()) steps.push(makeQuestionStep(question, index, "question", project));
     if (question.answer.trim()) steps.push(makeQuestionStep(question, index, "answer", project));
-    if (question.answerCommentary.trim()) steps.push(makeQuestionStep(question, index, "commentary", project));
   });
   if (project.conclusionText.trim()) steps.push({ key: "conclusion", kind: "conclusion", text: project.conclusionText, path: project.conclusionRecording, duration: project.conclusionRecordingDuration, source: project.conclusionVoiceSource, aiAvailable: Boolean(project.conclusionAudio && project.conclusionAudioVoice === project.voice && project.conclusionAudioRate === project.speechRate) });
   return steps;
@@ -56,9 +54,9 @@ const writeStepRecording = (project: QuizProject, step: VoiceStep, path: string,
   if (step.kind === "conclusion") return { ...project, conclusionRecording: path, conclusionRecordingDuration: duration, conclusionVoiceSource: "recording" };
   const { questionId } = step;
   if (!questionId) return project;
-  const recordingField = `${step.kind}Recording` as "questionRecording" | "answerRecording" | "commentaryRecording";
-  const durationField = `${step.kind}RecordingDuration` as "questionRecordingDuration" | "answerRecordingDuration" | "commentaryRecordingDuration";
-  const sourceField = `${step.kind}VoiceSource` as "questionVoiceSource" | "answerVoiceSource" | "commentaryVoiceSource";
+  const recordingField = `${step.kind}Recording` as "questionRecording" | "answerRecording";
+  const durationField = `${step.kind}RecordingDuration` as "questionRecordingDuration" | "answerRecordingDuration";
+  const sourceField = `${step.kind}VoiceSource` as "questionVoiceSource" | "answerVoiceSource";
   return { ...project, questions: project.questions.map((question) => question.id === questionId ? { ...question, [recordingField]: path, [durationField]: duration, [sourceField]: "recording" } : question) };
 };
 
@@ -66,9 +64,9 @@ const clearStepRecording = (project: QuizProject, step: VoiceStep): QuizProject 
   if (step.kind === "introduction") return { ...project, introductionRecording: null, introductionRecordingDuration: null, introductionVoiceSource: "ai" };
   if (step.kind === "conclusion") return { ...project, conclusionRecording: null, conclusionRecordingDuration: null, conclusionVoiceSource: "ai" };
   if (!step.questionId) return project;
-  const recordingField = `${step.kind}Recording` as "questionRecording" | "answerRecording" | "commentaryRecording";
-  const durationField = `${step.kind}RecordingDuration` as "questionRecordingDuration" | "answerRecordingDuration" | "commentaryRecordingDuration";
-  const sourceField = `${step.kind}VoiceSource` as "questionVoiceSource" | "answerVoiceSource" | "commentaryVoiceSource";
+  const recordingField = `${step.kind}Recording` as "questionRecording" | "answerRecording";
+  const durationField = `${step.kind}RecordingDuration` as "questionRecordingDuration" | "answerRecordingDuration";
+  const sourceField = `${step.kind}VoiceSource` as "questionVoiceSource" | "answerVoiceSource";
   return { ...project, questions: project.questions.map((question) => question.id === step.questionId ? { ...question, [recordingField]: null, [durationField]: null, [sourceField]: "ai" } : question) };
 };
 

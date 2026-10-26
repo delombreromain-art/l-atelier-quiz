@@ -1,10 +1,21 @@
 import { randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+const execFileAsync = promisify(execFile);
+
+async function measureAudio(filePath: string) {
+  const ffprobe = path.join(process.cwd(), "node_modules", "@remotion", "compositor-win32-x64-msvc", "ffprobe.exe");
+  const { stdout } = await execFileAsync(ffprobe, [
+    "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", filePath,
+  ]);
+  return Number.parseFloat(stdout.trim());
+}
 
 const MAX_UPLOAD_SIZE = 100 * 1024 * 1024;
 const MIME_EXTENSIONS: Record<string, string> = {
@@ -36,6 +47,8 @@ export async function POST(request: Request) {
   const name = `${randomUUID()}${extension}`;
   const directory = path.join(process.cwd(), "public", "music");
   await mkdir(directory, { recursive: true });
-  await writeFile(path.join(directory, name), Buffer.from(await file.arrayBuffer()), { flag: "wx" });
-  return NextResponse.json({ path: `music/${name}`, originalName: file.name });
+  const destination = path.join(directory, name);
+  await writeFile(destination, Buffer.from(await file.arrayBuffer()), { flag: "wx" });
+  const duration = await measureAudio(destination).catch(() => null);
+  return NextResponse.json({ path: `music/${name}`, originalName: file.name, duration });
 }
