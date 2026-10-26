@@ -15,6 +15,7 @@ export const MAX_CONCLUSION_SECONDS = 20;
 export const INTRODUCTION_FRAMES = DEFAULT_INTRODUCTION_SECONDS * FPS;
 export const INTRODUCTION_QUESTION_GAP_FRAMES = 2 * FPS;
 export const MAX_QUESTIONS = 60;
+export const MAX_QUESTION_LIBRARY = 5000;
 
 export type VoiceId = "fr_FR-siwis-medium" | "fr_FR-upmc-medium" | "fr_FR-tom-medium" | "fr_FR-mls-medium";
 export type VoiceSource = "ai" | "recording";
@@ -45,6 +46,7 @@ export const INTRODUCTION_LAYER_DEFAULTS: IntroductionLayers = {
 
 export type QuizQuestion = {
   id: string;
+  enabled: boolean;
   title: string;
   prompt: string;
   answer: string;
@@ -137,6 +139,7 @@ export type QuizVideoProps = {
 
 export const makeQuestion = (number: number): QuizQuestion => ({
   id: `question-${number}`,
+  enabled: true,
   title: "",
   prompt: "",
   answer: "",
@@ -221,7 +224,7 @@ export const parseQuizCsv = (source: string): QuizQuestion[] => {
   if (questionColumn < 0 || answerColumn < 0) throw new Error("Les colonnes obligatoires sont « question » et « reponse ». Consultez le format indiqué sous l’importeur.");
 
   const dataRows = rows.slice(1);
-  if (dataRows.length > MAX_QUESTIONS) throw new Error(`Le fichier contient ${dataRows.length} lignes ; la limite est de ${MAX_QUESTIONS} questions.`);
+  if (dataRows.length > MAX_QUESTION_LIBRARY) throw new Error(`Le fichier contient ${dataRows.length} lignes ; la limite de la bibliotheque est de ${MAX_QUESTION_LIBRARY} questions.`);
   return dataRows.map((values, index) => {
     const read = (column: number) => column < 0 ? "" : (values[column] ?? "").trim();
     const prompt = read(questionColumn);
@@ -387,7 +390,8 @@ export const isVoiceId = (value: unknown): value is VoiceId =>
 export const normalizeProject = (input: unknown): QuizProject | null => {
   if (!input || typeof input !== "object") return null;
   const value = input as Partial<QuizProject>;
-  if (!Array.isArray(value.questions) || value.questions.length < 1 || value.questions.length > MAX_QUESTIONS) return null;
+  if (!Array.isArray(value.questions) || value.questions.length < 1 || value.questions.length > MAX_QUESTION_LIBRARY) return null;
+  if (value.questions.filter((question) => question && typeof question === "object" && (question as Partial<QuizQuestion>).enabled !== false).length > MAX_QUESTIONS) return null;
   if (!isVoiceId(value.voice)) return null;
 
   const questions: QuizQuestion[] = [];
@@ -399,6 +403,7 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
     questions.push({
       ...makeQuestion(index + 1),
       id: typeof row.id === "string" ? row.id.slice(0, 80) : `question-${index + 1}`,
+      enabled: row.enabled !== false,
       title: typeof row.title === "string" ? row.title : "",
       prompt: row.prompt,
       answer: row.answer,

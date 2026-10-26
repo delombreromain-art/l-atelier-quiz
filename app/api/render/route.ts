@@ -34,8 +34,10 @@ async function render(job: RenderJob, project: NonNullable<ReturnType<typeof nor
   const browserExecutable = await findChrome();
   if (!browserExecutable) throw new Error("Chrome ou Microsoft Edge est nécessaire au rendu local. Aucun navigateur ne sera téléchargé automatiquement.");
 
-  const selectedQuestions = scope === "question" ? [project.questions[questionIndex]] : project.questions;
-  const videoProps: QuizVideoProps = { project, questions: selectedQuestions, questionOffset: scope === "question" ? questionIndex : 0 };
+  const activeQuestions = project.questions.filter((question) => question.enabled !== false);
+  const selectedQuestions = scope === "question" ? [activeQuestions[questionIndex]] : activeQuestions;
+  const videoProject = { ...project, questions: activeQuestions };
+  const videoProps: QuizVideoProps = { project: videoProject, questions: selectedQuestions, questionOffset: scope === "question" ? questionIndex : 0 };
   const entryPoint = path.join(root, "remotion", "index.tsx");
   const bundleDirectory = path.join(root, "data", "remotion-bundle");
   job.stage = "preparing";
@@ -99,15 +101,17 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null) as null | { project?: unknown; scope?: unknown; questionIndex?: unknown };
   const project = normalizeProject(body?.project);
   if (!project) return NextResponse.json({ error: "Le projet est invalide." }, { status: 400 });
-  if (body?.scope !== "question" && project.questions.some((question) => !question.prompt.trim() || !question.answer.trim())) {
+  const activeQuestions = project.questions.filter((question) => question.enabled !== false);
+  if (activeQuestions.length === 0) return NextResponse.json({ error: "Activez au moins une question pour creer la video." }, { status: 400 });
+  if (body?.scope !== "question" && activeQuestions.some((question) => !question.prompt.trim() || !question.answer.trim())) {
     return NextResponse.json({ error: "Complétez toutes les questions et leurs réponses avant le rendu." }, { status: 400 });
   }
   const scope = body?.scope === "question" ? "question" : "all";
   const questionIndex = Number.isInteger(body?.questionIndex) ? Number(body?.questionIndex) : 0;
-  if (scope === "question" && (questionIndex < 0 || questionIndex >= project.questions.length)) {
+  if (scope === "question" && (questionIndex < 0 || questionIndex >= activeQuestions.length)) {
     return NextResponse.json({ error: "Question à exporter inconnue." }, { status: 400 });
   }
-  const selected = scope === "all" ? project.questions : [project.questions[questionIndex]];
+  const selected = scope === "all" ? activeQuestions : [activeQuestions[questionIndex]];
   if (selected.some((question) => !question.prompt.trim() || !question.answer.trim())) {
     return NextResponse.json({ error: scope === "all" ? "Complétez toutes les questions et leurs réponses avant le rendu." : `Complétez la question ${questionIndex + 1} et sa réponse avant le rendu.` }, { status: 400 });
   }

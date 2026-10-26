@@ -15,7 +15,7 @@ export async function GET() {
 export async function PUT(request: Request) {
   const project = normalizeProject(await request.json().catch(() => null));
   if (!project) {
-    return NextResponse.json({ error: "Le projet doit contenir entre 1 et 60 questions." }, { status: 400 });
+    return NextResponse.json({ error: "Le projet doit contenir entre 1 et 5000 questions, avec 60 questions actives maximum." }, { status: 400 });
   }
   const previous = await readProject();
   await saveProject(project);
