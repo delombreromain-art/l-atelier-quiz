@@ -253,6 +253,24 @@ export default function VoiceStudioPage() {
     } finally { setSaving(false); }
   }, []);
 
+  const deleteTakeFromLibrary = useCallback(async (step: VoiceStep, takeId: string) => {
+    const currentProject = projectRef.current;
+    if (!currentProject) throw new Error("Le quiz n’est pas chargé.");
+    const latestStep = buildSteps(currentProject).find((candidate) => candidate.key === step.key) ?? step;
+    const take = latestStep.takes.find((item) => item.id === takeId);
+    if (!take) throw new Error("Cette prise n’existe plus dans le projet.");
+    if (latestStep.clips.some((clip) => clip.takeId === takeId)) throw new Error("Retire d’abord tous les extraits de cette prise du montage.");
+    if (latestStep.takes.length === 1 && latestStep.path) throw new Error("Supprime d’abord l’enregistrement principal pour retirer cette dernière prise.");
+    const updatedProject = writeStepMontage(currentProject, latestStep, latestStep.takes.filter((item) => item.id !== takeId), latestStep.clips);
+    setSaving(true); setFeedback("Suppression de la prise…");
+    try {
+      const response = await fetch("/api/project", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updatedProject) });
+      const result = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) throw new Error(result?.error || "La prise n’a pas pu être supprimée.");
+      projectRef.current = updatedProject; setProject(updatedProject); setFeedback("Prise supprimée de la bibliothèque.");
+    } finally { setSaving(false); }
+  }, []);
+
   const saveMontageData = useCallback(async (step: VoiceStep, takes: RecordingTake[], clips: RecordingClip[]) => {
     const currentProject = projectRef.current;
     if (!currentProject) throw new Error("Le quiz n’est pas chargé.");
@@ -383,6 +401,7 @@ export default function VoiceStudioPage() {
                   onRecordingSaved={() => { if (autoAdvanceRef.current) setCurrentIndex((index) => Math.min(index + 1, stepsRef.current.length - 1)); }}
                   onSave={(blob, duration, originalBlob, originalDuration, isNewTake, replaceTakeId) => saveCurrentStep(activeStep, blob, duration, originalBlob, originalDuration, isNewTake, replaceTakeId)}
                   onAddTake={(blob, duration) => saveTakeToLibrary(activeStep, blob, duration)}
+                  onDeleteTake={(takeId) => deleteTakeFromLibrary(activeStep, takeId)}
                   onUpdateMontage={(takes, clips) => saveMontageData(activeStep, takes, clips)}
                   onDelete={() => void deleteStepRecording(activeStep)}
                 />

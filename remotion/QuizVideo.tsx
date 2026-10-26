@@ -10,6 +10,9 @@ import {
 } from "remotion";
 import {
   ANSWER_FRAMES,
+  CONCLUSION_VISUAL_FADE_FRAMES,
+  CONCLUSION_VOICE_DELAY_FRAMES,
+  ENDING_PAUSE_FRAMES,
   FPS,
   THEME_FRAMES,
   conclusionDurationFrames,
@@ -129,7 +132,9 @@ const IntroductionLayerImage: React.FC<{
   lightOnEntry?: boolean;
   shineStartFrame?: number;
   shineFrames?: number;
-}> = ({ image, layer, startFrame, enterFrames, scaleFrom, risePixels, lightOnEntry = false, shineStartFrame, shineFrames = 1 }) => {
+  spinStartFrame?: number;
+  spinFrames?: number;
+}> = ({ image, layer, startFrame, enterFrames, scaleFrom, risePixels, lightOnEntry = false, shineStartFrame, shineFrames = 1, spinStartFrame, spinFrames = 48 }) => {
   const frame = useCurrentFrame();
   const progress = interpolate(frame, [startFrame, startFrame + enterFrames], [0, 1], {
     extrapolateLeft: "clamp",
@@ -150,6 +155,18 @@ const IntroductionLayerImage: React.FC<{
     });
   const shineOpacity = interpolate(shineProgress, [0, 0.25, 0.5, 0.75, 1], [0, 0.22, 0.32, 0.22, 0]);
   const shinePosition = interpolate(shineProgress, [0, 1], [120, -20]);
+  const spinProgress = spinStartFrame === undefined ? 0 : interpolate(frame, [spinStartFrame, spinStartFrame + spinFrames], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: Easing.inOut(Easing.cubic),
+  });
+  const spinRotation = 720 * spinProgress;
+  const spinEndFrame = spinStartFrame === undefined ? 0 : spinStartFrame + spinFrames;
+  const spinFlash = spinStartFrame === undefined ? 0 : interpolate(frame, [spinEndFrame - 2, spinEndFrame, spinEndFrame + 3, spinEndFrame + 12], [0, 1, 0.55, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: Easing.out(Easing.quad),
+  });
   const imageUrl = toPublicUrl(image);
   return (
     <div style={{
@@ -159,9 +176,9 @@ const IntroductionLayerImage: React.FC<{
       width: `${layer.width / 1920 * 100}%`,
       zIndex: layer.zIndex,
       opacity: progress,
-      transform: `translateY(${translateY}px) scale(${scale})`,
+      transform: `translateY(${translateY}px) scale(${scale}) rotate(${spinRotation}deg)`,
       transformOrigin: "center center",
-      filter: `brightness(${brightness})`,
+      filter: `brightness(${brightness + spinFlash * 0.12}) drop-shadow(0 0 ${spinFlash * 18}px #d8b866aa)`,
       pointerEvents: "none",
     }}>
       <Img src={imageUrl} style={{ display: "block", width: "100%", height: "auto", objectFit: "contain" }} />
@@ -180,8 +197,7 @@ const IntroductionLayerImage: React.FC<{
 const IntroductionComposition: React.FC<{ background: string | null; layers: IntroductionLayers; durationFrames: number }> = ({ background, layers, durationFrames }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const timeScale = durationFrames / (20 * fps);
-  const frames = (seconds: number) => Math.max(1, Math.round(seconds * fps * timeScale));
+  const frames = (seconds: number) => Math.max(1, Math.round(seconds * fps));
   const backgroundFadeFrames = frames(0.5);
   const finalFadeFrames = frames(0.6);
   const backgroundOpacity = interpolate(frame, [0, backgroundFadeFrames], [0, 1], {
@@ -199,14 +215,14 @@ const IntroductionComposition: React.FC<{ background: string | null; layers: Int
     extrapolateRight: "clamp",
     easing: Easing.inOut(Easing.sin),
   });
-  const layerAnimations: Partial<Record<keyof IntroductionLayers, { start: number; duration: number; scale: number; rise: number; light?: boolean; shine?: number }>> = {
-    logo: { start: 1, duration: 1.5, scale: 0.96, rise: 0, shine: 2.7 },
-    questionsPanel: { start: 9, duration: 1.5, scale: 0.94, rise: 15, shine: 9.8 },
-    history: { start: 11, duration: 1.2, scale: 0.92, rise: 10, light: true },
-    geography: { start: 11, duration: 1.2, scale: 0.92, rise: 10, light: true },
-    science: { start: 11, duration: 1.2, scale: 0.92, rise: 10, light: true },
-    cinema: { start: 11, duration: 1.2, scale: 0.92, rise: 10, light: true },
-    hourglass: { start: 14, duration: 1, scale: 0.96, rise: 0, light: true },
+  const layerAnimations: Partial<Record<keyof IntroductionLayers, { start: number; duration: number; scale: number; rise: number; light?: boolean; shine?: number; shineDuration?: number; spinAt?: number; spinDuration?: number }>> = {
+    logo: { start: 0.5, duration: 1.5, scale: 0.96, rise: 0, shine: 2.2 },
+    questionsPanel: { start: 3, duration: 1.5, scale: 0.94, rise: 15, shine: 3.8 },
+    history: { start: 5, duration: 1.2, scale: 0.92, rise: 10, light: true },
+    geography: { start: 5, duration: 1.2, scale: 0.92, rise: 10, light: true },
+    science: { start: 5, duration: 1.2, scale: 0.92, rise: 10, light: true },
+    cinema: { start: 5, duration: 1.2, scale: 0.92, rise: 10, light: true },
+    hourglass: { start: 10, duration: 1, scale: 0.96, rise: 0, light: true, spinAt: 15, spinDuration: 1.6, shine: 17.6, shineDuration: 0.4 },
   };
 
   return (
@@ -231,14 +247,16 @@ const IntroductionComposition: React.FC<{ background: string | null; layers: Int
             risePixels={animation.rise}
             lightOnEntry={animation.light}
             shineStartFrame={animation.shine === undefined ? undefined : frames(animation.shine)}
-            shineFrames={frames(1)}
+            shineFrames={frames(animation.shineDuration ?? 1)}
+            spinStartFrame={animation.spinAt === undefined ? undefined : frames(animation.spinAt)}
+            spinFrames={frames(animation.spinDuration ?? 1.6)}
           />;
         })}
     </div>
   );
 };
 
-const ConclusionComposition: React.FC<{ background: string | null; images: { source: string | null; layer: ConclusionLayer }[]; frame: number; durationFrames: number }> = ({ background, images, frame, durationFrames }) => {
+const ConclusionComposition: React.FC<{ background: string | null; images: { source: string | null; layer: ConclusionLayer }[]; frame: number; durationFrames: number; opacity?: number }> = ({ background, images, frame, durationFrames, opacity = 1 }) => {
   const { fps } = useVideoConfig();
   const durationScale = durationFrames / (10 * fps);
   const at = (seconds: number) => Math.max(1, Math.round(seconds * fps * durationScale));
@@ -249,7 +267,7 @@ const ConclusionComposition: React.FC<{ background: string | null; images: { sou
   });
 
   return (
-    <div style={{ position: "absolute", zIndex: 30, inset: 0, overflow: "hidden", pointerEvents: "none" }}>
+    <div style={{ position: "absolute", zIndex: 30, inset: 0, overflow: "hidden", pointerEvents: "none", opacity }}>
       {background
         ? <Img src={toPublicUrl(background)} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", transform: `scale(${backgroundScale})` }} />
         : <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 50% 48%, #284034 0%, #14221b 58%, #0d1512 100%)" }} />}
@@ -322,10 +340,14 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
   const frame = useCurrentFrame();
   const { fps, durationInFrames } = useVideoConfig();
   const introFrames = introductionDurationFrames(project);
+  const introductionVoiceStartFrame = Math.round(0.3 * fps);
   const hasFullQuiz = questionOffset === 0 && questions.length === project.questions.length;
   const outroFrames = hasFullQuiz ? conclusionDurationFrames(project) : 0;
-  const conclusionStartFrame = questionVideoDuration(questions, introFrames, 0, project.voice, project.speechRate);
-  const isConclusion = outroFrames > 0 && frame >= conclusionStartFrame;
+  const endingPauseFrames = outroFrames > 0 ? ENDING_PAUSE_FRAMES : 0;
+  const conclusionVoiceDelayFrames = outroFrames > 0 && conclusionNarration(project) ? CONCLUSION_VOICE_DELAY_FRAMES : 0;
+  const conclusionFadeFrames = outroFrames > 0 ? CONCLUSION_VISUAL_FADE_FRAMES : 0;
+  const conclusionStartFrame = questionVideoDuration(questions, introFrames, endingPauseFrames, project.voice, project.speechRate);
+  const isConclusion = outroFrames > 0 && frame >= conclusionStartFrame + conclusionFadeFrames;
   const conclusionLocalFrame = frame - conclusionStartFrame;
   const musicVolume = project.musicVolume / 100;
   const musicCrossfadeFrames = Math.max(1, Math.round(0.7 * fps));
@@ -336,7 +358,7 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
   );
   const introductionMusicFadeStartFrame = Math.max(0, introductionMusicEndFrame - musicCrossfadeFrames);
   const narrationIntervals = [
-    ...(introductionNarration(project) ? [{ start: 0, end: Math.ceil(introductionNarration(project)!.duration * fps), musicDuck: project.introductionVoiceSource === "ai" }] : []),
+    ...(introductionNarration(project) ? [{ start: introductionVoiceStartFrame, end: introductionVoiceStartFrame + Math.ceil(introductionNarration(project)!.duration * fps), musicDuck: project.introductionVoiceSource === "ai" }] : []),
     ...questions.flatMap((item, index) => {
       const start = questionStartFrame(questions, index, introFrames, project.voice, project.speechRate);
       const q = narrationAudio(item, "question", project.voice, project.speechRate);
@@ -347,7 +369,7 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
         a && { start: questionEnd, end: questionEnd + Math.ceil(a.duration * fps), musicDuck: item.answerVoiceSource === "ai" },
       ].filter((interval): interval is { start: number; end: number; musicDuck: boolean } => Boolean(interval));
     }),
-    ...(hasFullQuiz && conclusionNarration(project) ? [{ start: conclusionStartFrame, end: conclusionStartFrame + Math.ceil(conclusionNarration(project)!.duration * fps), musicDuck: project.conclusionVoiceSource === "ai" }] : []),
+    ...(hasFullQuiz && conclusionNarration(project) ? [{ start: conclusionStartFrame + conclusionVoiceDelayFrames, end: conclusionStartFrame + conclusionVoiceDelayFrames + Math.ceil(conclusionNarration(project)!.duration * fps), musicDuck: project.conclusionVoiceSource === "ai" }] : []),
   ];
   const voiceDuckAt = (absoluteFrame: number, musicOnly = false) => {
     const fade = Math.max(1, Math.round(0.25 * fps));
@@ -388,6 +410,7 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
   const isLast = activeIndex === questions.length - 1;
   const questionFrames = questionDurationFrames(question, project.voice, project.speechRate);
   const answerFrames = answerDisplayFrames(question, project.voice, project.speechRate);
+  const finalAnswerHoldFrames = isLast ? endingPauseFrames + conclusionFadeFrames : 0;
   const transitionStart = questionFrames + answerFrames;
   const isTransitioning = localFrame >= transitionStart && !isLast;
   const questionNumber = questionOffset + activeIndex + 1;
@@ -404,8 +427,8 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
       {project.backgroundMusic && <Sequence from={0} durationInFrames={durationInFrames} layout="none"><Audio src={toPublicUrl(project.backgroundMusic)} loop loopVolumeCurveBehavior="extend" volume={themeMusicVolumeAt} /></Sequence>}
       {project.introductionMusic && <Sequence from={0} durationInFrames={introductionMusicEndFrame} layout="none"><Audio src={toPublicUrl(project.introductionMusic)} volume={(audioFrame) => introductionMusicVolumeAt(audioFrame)} /></Sequence>}
       {hasFullQuiz && outroFrames > 0 && project.conclusionMusic && <Sequence from={conclusionStartFrame} durationInFrames={outroFrames} layout="none"><Audio src={toPublicUrl(project.conclusionMusic)} loop volume={(audioFrame) => interpolate(audioFrame, [0, musicCrossfadeFrames], [0, project.conclusionMusicVolume / 100], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) })} /></Sequence>}
-      {introductionNarration(project) && <Sequence from={0} durationInFrames={Math.max(1, Math.ceil(introductionNarration(project)!.duration * fps))} layout="none"><Audio src={toPublicUrl(introductionNarration(project)!.path)} volume={project.voiceVolume / 100} /></Sequence>}
-      {hasFullQuiz && conclusionNarration(project) && <Sequence from={conclusionStartFrame} durationInFrames={Math.max(1, Math.ceil(conclusionNarration(project)!.duration * fps))} layout="none"><Audio src={toPublicUrl(conclusionNarration(project)!.path)} volume={project.voiceVolume / 100} /></Sequence>}
+      {introductionNarration(project) && <Sequence from={introductionVoiceStartFrame} durationInFrames={Math.max(1, Math.ceil(introductionNarration(project)!.duration * fps))} layout="none"><Audio src={toPublicUrl(introductionNarration(project)!.path)} volume={project.voiceVolume / 100} /></Sequence>}
+      {hasFullQuiz && conclusionNarration(project) && <Sequence from={conclusionStartFrame + conclusionVoiceDelayFrames} durationInFrames={Math.max(1, Math.ceil(conclusionNarration(project)!.duration * fps))} layout="none"><Audio src={toPublicUrl(conclusionNarration(project)!.path)} volume={project.voiceVolume / 100} /></Sequence>}
       {questions.map((item, index) => {
         const narration = narrationAudio(item, "question", project.voice, project.speechRate);
         const start = questionStartFrame(questions, index, introFrames, project.voice, project.speechRate);
@@ -433,8 +456,8 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
         </>
         : isConclusion ? null : <Backdrop image={project.background} />}
       {!isConclusion && hasQuestionStarted && localFrame < questionFrames && <Illustration image={question.image} />}
-      {!isConclusion && hasQuestionStarted && localFrame >= questionFrames && localFrame < questionFrames + answerFrames && <Illustration image={question.answerImage || (question.keepImageOnAnswer ? question.image : null)} />}
-      {!isConclusion && hasQuestionStarted && localFrame < questionFrames + answerFrames && <QuestionAnswerCard question={question} number={questionNumber} frame={localFrame} questionFrames={questionFrames} answerFrames={answerFrames} />}
+      {!isConclusion && hasQuestionStarted && localFrame >= questionFrames && localFrame < questionFrames + answerFrames + finalAnswerHoldFrames && <Illustration image={question.answerImage || (question.keepImageOnAnswer ? question.image : null)} />}
+      {!isConclusion && hasQuestionStarted && localFrame < questionFrames + answerFrames + finalAnswerHoldFrames && <QuestionAnswerCard question={question} number={questionNumber} frame={localFrame} questionFrames={questionFrames} answerFrames={answerFrames} />}
       {!isConclusion && hasQuestionStarted && localFrame < questionFrames && <Timer frame={localFrame} duration={questionFrames} />}
       {localFrame >= transitionStart && !isLast && nextQuestion && (
         isNewTheme && nextTheme?.image
@@ -447,7 +470,7 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
       {!isOpeningTheme && !isConclusion && <div style={{ position: "absolute", zIndex: 1, inset: 18, border: "1px solid #dfc27650" }} />}
       {!isOpeningTheme && !isConclusion && <div style={{ position: "absolute", zIndex: 1, top: 39, right: 47, width: 18, height: 18, borderTop: "1px solid #dfc27688", borderRight: "1px solid #dfc27688" }} />}
       {!isOpeningTheme && !isConclusion && <div style={{ position: "absolute", zIndex: 1, bottom: 39, left: 47, width: 18, height: 18, borderBottom: "1px solid #dfc27688", borderLeft: "1px solid #dfc27688" }} />}
-      {isConclusion && <ConclusionComposition background={project.conclusionBackgroundImage} images={[{ source: project.conclusionImage, layer: project.conclusionLayer }, { source: project.conclusionImage2, layer: project.conclusionLayer2 }, { source: project.conclusionImage3, layer: project.conclusionLayer3 }]} frame={conclusionLocalFrame} durationFrames={outroFrames} />}
+      {outroFrames > 0 && frame >= conclusionStartFrame && <ConclusionComposition background={project.conclusionBackgroundImage} images={[{ source: project.conclusionImage, layer: project.conclusionLayer }, { source: project.conclusionImage2, layer: project.conclusionLayer2 }, { source: project.conclusionImage3, layer: project.conclusionLayer3 }]} frame={conclusionLocalFrame} durationFrames={outroFrames} opacity={interpolate(conclusionLocalFrame, [0, conclusionFadeFrames], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) })} />}
     </div>
   );
 };

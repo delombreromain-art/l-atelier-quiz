@@ -26,6 +26,7 @@ type Props = {
   onSave: (blob: Blob, duration: number, originalBlob?: Blob, originalDuration?: number, isNewTake?: boolean, replaceTakeId?: string) => Promise<void>;
   onAddTake?: (blob: Blob, duration: number) => Promise<RecordingTake>;
   onUpdateMontage?: (takes: RecordingTake[], clips: RecordingClip[]) => Promise<void>;
+  onDeleteTake?: (takeId: string) => Promise<void>;
   onDelete: () => void;
 };
 
@@ -41,7 +42,7 @@ export type VoiceRecorderHandle = {
 
 const formatTime = (seconds: number) => `${Math.floor(seconds / 60).toString().padStart(2, "0")}:${Math.floor(seconds % 60).toString().padStart(2, "0")}`;
 
-export const VoiceRecorder = forwardRef<VoiceRecorderHandle, Props>(function VoiceRecorder({ label, path, duration, originalPath = null, recordingTakes = [], recordingClips = [], source, aiAvailable, onSourceChange, busy = false, autoSaveAfterStop = false, onRecordingSaved, onRecordingStateChange, onRecordingStartPendingChange, onPendingTakeChange, onMicrophoneReady, showSourcePicker = true, micDeviceId, onSave, onAddTake, onUpdateMontage, onDelete }, ref) {
+export const VoiceRecorder = forwardRef<VoiceRecorderHandle, Props>(function VoiceRecorder({ label, path, duration, originalPath = null, recordingTakes = [], recordingClips = [], source, aiAvailable, onSourceChange, busy = false, autoSaveAfterStop = false, onRecordingSaved, onRecordingStateChange, onRecordingStartPendingChange, onPendingTakeChange, onMicrophoneReady, showSourcePicker = true, micDeviceId, onSave, onAddTake, onUpdateMontage, onDeleteTake, onDelete }, ref) {
   const [recording, setRecording] = useState(false);
   const [starting, setStarting] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -80,6 +81,10 @@ export const VoiceRecorder = forwardRef<VoiceRecorderHandle, Props>(function Voi
     const timer = window.setInterval(() => setElapsed((performance.now() - startedAtRef.current) / 1000), 100);
     return () => window.clearInterval(timer);
   }, [recording]);
+
+  useEffect(() => {
+    if (selectedTakeId && !recordingTakes.some((item) => item.id === selectedTakeId)) setSelectedTakeId(recordingTakes[0]?.id ?? null);
+  }, [recordingTakes, selectedTakeId]);
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -209,7 +214,7 @@ export const VoiceRecorder = forwardRef<VoiceRecorderHandle, Props>(function Voi
       const selectedTake = recordingTakes.find((item) => item.id === selectedTakeId);
       const selectedPath = selectedTake?.path ?? path;
       const pendingTakeIsEditorSource = !selectedTake;
-      return <AudioEditor key={`${take?.url ?? "saved"}:${selectedTakeId ?? "none"}`} ref={editorRef} label={label} path={selectedPath} take={pendingTakeIsEditorSource ? take?.blob ?? null : null} takeDuration={pendingTakeIsEditorSource ? take?.duration ?? null : null} originalPath={selectedTake?.originalPath ?? (selectedTake?.path === path ? originalPath : selectedTake?.path ?? originalPath)} duration={selectedTake?.duration ?? duration} takes={recordingTakes} clips={recordingClips} montageEnabled={Boolean(onAddTake && onUpdateMontage)} selectedTakeId={selectedTakeId} onSelectTake={setSelectedTakeId} onUpdateClips={updateClips} onNewTake={() => void begin()} canAddTake={Boolean(take && onAddTake)} hideSave={Boolean(take && onAddTake)} onSave={saveEditor} onSaved={() => undefined} onCancelTake={discard} onAddTake={addTakeToLibrary} onMontageValidated={() => onRecordingSaved?.()} />;
+      return <AudioEditor key={`${take?.url ?? "saved"}:${selectedTakeId ?? "none"}`} ref={editorRef} label={label} path={selectedPath} take={pendingTakeIsEditorSource ? take?.blob ?? null : null} takeDuration={pendingTakeIsEditorSource ? take?.duration ?? null : null} originalPath={selectedTake?.originalPath ?? (selectedTake?.path === path ? originalPath : selectedTake?.path ?? originalPath)} duration={selectedTake?.duration ?? duration} takes={recordingTakes} clips={recordingClips} montageEnabled={Boolean(onAddTake && onUpdateMontage)} selectedTakeId={selectedTakeId} onSelectTake={setSelectedTakeId} onUpdateClips={updateClips} onNewTake={() => void begin()} onDeleteTake={async (takeId) => onDeleteTake?.(takeId)} canAddTake={Boolean(take && onAddTake)} hideSave={Boolean(take && onAddTake)} onSave={saveEditor} onSaved={() => undefined} onCancelTake={discard} onAddTake={addTakeToLibrary} onMontageValidated={() => onRecordingSaved?.()} disabled={busy} />;
     })()}
     {recording && <div className="mic-level" role="meter" aria-label="Niveau du microphone" aria-valuemin={0} aria-valuemax={100} aria-valuenow={micLevel}><span style={{ width: `${micLevel}%` }} /></div>}
     {error && <p className="recorder-error" role="alert">{error}</p>}
