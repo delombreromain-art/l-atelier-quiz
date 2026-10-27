@@ -98,7 +98,7 @@ async function render(job: RenderJob, project: NonNullable<ReturnType<typeof nor
 }
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null) as null | { project?: unknown; scope?: unknown; questionIndex?: unknown };
+  const body = await request.json().catch(() => null) as null | { project?: unknown; projectId?: unknown; scope?: unknown; questionIndex?: unknown };
   const project = normalizeProject(body?.project);
   if (!project) return NextResponse.json({ error: "Le projet est invalide." }, { status: 400 });
   const activeQuestions = project.questions.filter((question) => question.enabled !== false);
@@ -132,7 +132,7 @@ export async function POST(request: Request) {
   }
 
   await ensureProjectFolders();
-  await saveProject(project);
+  await saveProject(project, typeof body?.projectId === "string" ? body.projectId : undefined);
   await mkdir(exportsDirectory, { recursive: true });
   const job: RenderJob = { id: randomUUID(), stage: "queued", progress: 0, message: "En attente", startedAt: Date.now() };
   renderJobs.set(job.id, job);

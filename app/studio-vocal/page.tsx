@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import type { QuizProject, QuizQuestion, RecordingClip, RecordingTake, VoiceSource } from "@/lib/quiz";
+import { StudioSidebar } from "../StudioSidebar";
 import { VoiceRecorder, type VoiceRecorderHandle } from "../VoiceRecorder";
 import "../studio.css";
 
@@ -101,6 +101,8 @@ const sessionKeyFor = (project: QuizProject) => `atelier-quiz:voice-studio:${enc
 const isTypingTarget = (target: EventTarget | null) => target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
 
 export default function VoiceStudioPage() {
+  const projectIdRef = useRef("principal");
+  const [projectId, setProjectId] = useState("principal");
   const [project, setProject] = useState<QuizProject | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -124,7 +126,9 @@ export default function VoiceStudioPage() {
 
   useEffect(() => {
     let canceled = false;
-    fetch("/api/project", { cache: "no-store" }).then(async (response) => {
+    const id = new URLSearchParams(window.location.search).get("id") || "principal";
+    projectIdRef.current = id; setProjectId(id);
+    fetch(`/api/project?id=${encodeURIComponent(id)}`, { cache: "no-store" }).then(async (response) => {
       if (!response.ok) throw new Error("Impossible de charger le quiz local.");
       return response.json() as Promise<QuizProject>;
     }).then((saved) => {
@@ -223,7 +227,7 @@ export default function VoiceStudioPage() {
         preservedDuration = step.path ? step.duration ?? duration : step.takes[0]?.duration ?? duration;
       }
       const updatedProject = writeStepRecording(currentProject, stepToWrite, uploadedPath, duration, preservedPath, preservedDuration);
-      const response = await fetch("/api/project", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updatedProject) });
+      const response = await fetch(`/api/project?id=${encodeURIComponent(projectIdRef.current)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updatedProject) });
       const result = await response.json().catch(() => null) as { error?: string } | null;
       if (!response.ok) throw new Error(result?.error || "La référence de la prise n’a pas pu être enregistrée dans le quiz.");
       projectRef.current = updatedProject; setProject(updatedProject); pendingUploadRef.current = null; setFeedback(replaceTakeId ? `Modifications enregistrées pour ${kindLabels[step.kind]} ; la version précédente reste disponible.` : `Prise enregistrée pour ${kindLabels[step.kind]}.`);
@@ -245,7 +249,7 @@ export default function VoiceStudioPage() {
       const take = { id: crypto.randomUUID(), path: result.path, duration };
       const latestStep = buildSteps(currentProject).find((candidate) => candidate.key === step.key) ?? step;
       const updatedProject = writeStepMontage(currentProject, latestStep, [...latestStep.takes, take], latestStep.clips);
-      const save = await fetch("/api/project", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updatedProject) });
+      const save = await fetch(`/api/project?id=${encodeURIComponent(projectIdRef.current)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updatedProject) });
       const saved = await save.json().catch(() => null) as { error?: string } | null;
       if (!save.ok) throw new Error(saved?.error || "La prise n’a pas pu être enregistrée dans le projet.");
       projectRef.current = updatedProject; setProject(updatedProject); setFeedback("Prise originale ajoutée à la bibliothèque.");
@@ -264,7 +268,7 @@ export default function VoiceStudioPage() {
     const updatedProject = writeStepMontage(currentProject, latestStep, latestStep.takes.filter((item) => item.id !== takeId), latestStep.clips);
     setSaving(true); setFeedback("Suppression de la prise…");
     try {
-      const response = await fetch("/api/project", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updatedProject) });
+      const response = await fetch(`/api/project?id=${encodeURIComponent(projectIdRef.current)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updatedProject) });
       const result = await response.json().catch(() => null) as { error?: string } | null;
       if (!response.ok) throw new Error(result?.error || "La prise n’a pas pu être supprimée.");
       projectRef.current = updatedProject; setProject(updatedProject); setFeedback("Prise supprimée de la bibliothèque.");
@@ -278,7 +282,7 @@ export default function VoiceStudioPage() {
     const updatedProject = writeStepMontage(currentProject, latestStep, takes, clips);
     setSaving(true);
     try {
-      const response = await fetch("/api/project", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updatedProject) });
+      const response = await fetch(`/api/project?id=${encodeURIComponent(projectIdRef.current)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updatedProject) });
       const result = await response.json().catch(() => null) as { error?: string } | null;
       if (!response.ok) throw new Error(result?.error || "Le montage n’a pas pu être sauvegardé.");
       projectRef.current = updatedProject; setProject(updatedProject);
@@ -292,7 +296,7 @@ export default function VoiceStudioPage() {
     setSaving(true); setFeedback("Suppression de la prise…");
     try {
       const updatedProject = clearStepRecording(currentProject, step);
-      const response = await fetch("/api/project", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updatedProject) });
+      const response = await fetch(`/api/project?id=${encodeURIComponent(projectIdRef.current)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updatedProject) });
       if (!response.ok) throw new Error("La suppression n’a pas pu être enregistrée dans le quiz.");
       projectRef.current = updatedProject; setProject(updatedProject); setFeedback("Enregistrement supprimé.");
     } catch (error) { setFeedback(error instanceof Error ? error.message : "Suppression impossible."); }
@@ -343,17 +347,7 @@ export default function VoiceStudioPage() {
     ? "Démarrage…" : index === currentIndex && (recording || saving) ? "En cours" : index === currentIndex && pendingTake ? "À sauvegarder" : step.path ? "Enregistré" : skipped.includes(step.key) ? "Ignoré" : "À enregistrer";
 
   return <div className="studio-shell voice-studio-shell">
-    <aside className="sidebar">
-      <Link href="/" className="sidebar-brand"><span className="brand-glyph" aria-hidden="true">AQ</span><span><strong>L’Atelier Quiz</strong><small>STUDIO LOCAL</small></span></Link>
-      <div className="sidebar-label">ENREGISTREMENT</div>
-      <nav className="side-nav" aria-label="Navigation du studio vocal">
-        <a className="voice-studio-nav-active" href="/studio-vocal"><span aria-hidden="true">🎙</span> Studio vocal</a>
-        <Link href="/" className="voice-studio-back">← Retour à l’éditeur</Link>
-      </nav>
-      <div className="sidebar-spacer" />
-      <div className="local-card"><span className="local-led" /><strong>Projet sur ce PC</strong><small>Les prises sont ajoutées aux narrations existantes du quiz et réutilisées dans Remotion.</small></div>
-      <div className="sidebar-version">STUDIO VOCAL · SAUVEGARDE LOCALE</div>
-    </aside>
+    <StudioSidebar projectId={projectId} questionCount={project?.questions.filter((question) => question.enabled !== false).length ?? 0} page="voice" />
 
     <main className="studio-main voice-studio-main">
       <header className="topbar"><div className="breadcrumb"><span>ATELIER</span><i>/</i> Studio vocal</div><div className={`save-indicator ${saving ? "save-saving" : "save-saved"}`}><span />{saving ? "Sauvegarde de la prise…" : "Quiz sauvegardé sur ce PC"}</div></header>

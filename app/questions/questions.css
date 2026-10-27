@@ -8,3 +8,4 @@
 
 .ql-order-hint{display:block;margin:5px 0;color:#858379;font-size:11px}.ql-drag-handle:hover{background:#363225;border-color:#b39956}
 .ql-top{position:sticky;top:0;z-index:50;background:#11120f;padding-top:14px;padding-bottom:18px}
+.ql-button.ql-danger{border-color:#67413c;color:#e0aaa2}.ql-button.ql-danger:hover{border-color:#b26e63;background:#2b1d1b}.ql-button:disabled{opacity:.45;cursor:not-allowed}

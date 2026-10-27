@@ -155,6 +155,7 @@ export type QuizProject = {
   speechRate: number;
   voiceVolume: number;
   questions: QuizQuestion[];
+  archivedQuestions: QuizQuestion[];
 };
 
 export type QuizVideoProps = {
@@ -351,6 +352,7 @@ export const defaultProject: QuizProject = {
       answer: "Antoine de Saint-Exupéry",
     },
   ],
+  archivedQuestions: [],
 };
 
 export const narrationAudio = (question: QuizQuestion, part: "question" | "answer" | "commentary", voice?: VoiceId, rate?: number) => {
@@ -470,7 +472,7 @@ const normalizeRecordingClips = (raw: unknown, takes: RecordingTake[], fallbackI
 export const normalizeProject = (input: unknown): QuizProject | null => {
   if (!input || typeof input !== "object") return null;
   const value = input as Partial<QuizProject>;
-  if (!Array.isArray(value.questions) || value.questions.length < 1 || value.questions.length > MAX_QUESTION_LIBRARY) return null;
+  if (!Array.isArray(value.questions) || value.questions.length > MAX_QUESTION_LIBRARY) return null;
   if (value.questions.filter((question) => question && typeof question === "object" && (question as Partial<QuizQuestion>).enabled !== false).length > MAX_QUESTIONS) return null;
   if (!isVoiceId(value.voice)) return null;
 
@@ -596,6 +598,12 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
     width: conclusionWidth3,
   };
 
+  const archivedInput = Array.isArray(value.archivedQuestions) ? value.archivedQuestions.slice(0, MAX_QUESTION_LIBRARY) : [];
+  const archivedQuestions = archivedInput.length
+    ? normalizeProject({ ...value, questions: archivedInput, archivedQuestions: [] })?.questions ?? []
+    : [];
+  if (questions.length + archivedQuestions.length > MAX_QUESTION_LIBRARY) return null;
+
   return {
     title: typeof value.title === "string" ? value.title.slice(0, 120) : "Mon quiz",
     introductionText: typeof value.introductionText === "string" ? value.introductionText.slice(0, 1000) : "",
@@ -671,5 +679,6 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
     speechRate: Math.min(120, Math.max(80, Number(value.speechRate) || 100)),
     voiceVolume: Math.min(100, Math.max(0, Number(value.voiceVolume) || 0)),
     questions,
+    archivedQuestions,
   };
 };

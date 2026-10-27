@@ -33,6 +33,7 @@ import { QuizVideo } from "@/remotion/QuizVideo";
 import { ConclusionEditor, type ConclusionImageId } from "./ConclusionEditor";
 import { IntroductionEditor } from "./IntroductionEditor";
 import { VoiceRecorder } from "./VoiceRecorder";
+import { StudioSidebar } from "./StudioSidebar";
 import "./studio.css";
 
 type RenderStatus = {
@@ -69,9 +70,10 @@ function Slider({ label, value, min, max, unit, onChange }: {
     </label>
   );
 }
-
 export default function Home() {
   const [project, setProject] = useState<QuizProject>(defaultProject);
+  const [projectId, setProjectId] = useState("principal");
+  const [projectOptions, setProjectOptions] = useState<{ id: string; title: string }[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [saveState, setSaveState] = useState<"loading" | "saved" | "saving" | "error">("loading");
   const [feedback, setFeedback] = useState("");
@@ -80,7 +82,6 @@ export default function Home() {
   const [renderStatus, setRenderStatus] = useState<RenderStatus | null>(null);
   const [renderStarting, setRenderStarting] = useState(false);
   const [previewQuestion, setPreviewQuestion] = useState<number | "all" | "conclusion">("all");
-  const [openNavGroup, setOpenNavGroup] = useState<"musiques" | null>(null);
   const [mediaBusy, setMediaBusy] = useState("");
   const [countdownPreviewPlaying, setCountdownPreviewPlaying] = useState(false);
   const [introductionMusicPreviewPlaying, setIntroductionMusicPreviewPlaying] = useState(false);
@@ -93,8 +94,10 @@ export default function Home() {
   const answerSoundAudioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("id") || "principal";
+    setProjectId(id);
     let canceled = false;
-    fetch("/api/project", { cache: "no-store" })
+    fetch(`/api/project?id=${encodeURIComponent(id)}`, { cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) throw new Error("Impossible de lire le projet local.");
         return response.json() as Promise<QuizProject>;
@@ -108,18 +111,20 @@ export default function Home() {
     return () => { canceled = true; };
   }, []);
 
+  useEffect(() => { fetch("/api/projects", { cache: "no-store" }).then((r) => r.json()).then((rows) => setProjectOptions(rows)).catch(() => undefined); }, []);
+
   useEffect(() => {
     if (!loaded) return;
     setSaveState("saving");
     const timeout = window.setTimeout(async () => {
       try {
-        const response = await fetch("/api/project", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(project) });
+        const response = await fetch(`/api/project?id=${encodeURIComponent(projectId)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(project) });
         if (!response.ok) throw new Error("Sauvegarde impossible.");
         setSaveState("saved");
       } catch { setSaveState("error"); }
     }, 450);
     return () => window.clearTimeout(timeout);
-  }, [loaded, project]);
+  }, [loaded, project, projectId]);
 
   useEffect(() => {
     if (countdownAudioRef.current) countdownAudioRef.current.volume = project.countdownSoundVolume / 100;
@@ -479,7 +484,7 @@ export default function Home() {
     if (!audioReady) { setFeedback("Générez les voix manquantes avec la voix sélectionnée."); navigate("voix"); return; }
     setRenderStarting(true); setRenderStatus(null); setFeedback("");
     try {
-      const response = await fetch("/api/render", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ project, scope, questionIndex: index }) });
+      const response = await fetch("/api/render", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ project, projectId, scope, questionIndex: index }) });
       const result = await response.json() as { id?: string; error?: string };
       if (!response.ok || !result.id) throw new Error(result.error || "Le rendu n’a pas pu démarrer.");
       setRenderStatus({ id: result.id, stage: "queued", progress: 0, message: "En attente" });
@@ -508,6 +513,14 @@ export default function Home() {
   };
 
   const navigate = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const createSecondQuiz = async () => {
+    const title = window.prompt("Nom du deuxième quiz", "Mon deuxième quiz");
+    if (!title?.trim()) return;
+    const response = await fetch("/api/projects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ project, title: title.trim() }) });
+    const created = await response.json() as { id?: string; error?: string };
+    if (!response.ok || !created.id) { setFeedback(created.error || "Création du quiz impossible."); return; }
+    window.location.assign(`/?id=${encodeURIComponent(created.id)}`);
+  };
   const activeQuestions = project.questions.filter((question) => question.enabled !== false);
   const visibleQuestions = typeof previewQuestion === "number" ? [activeQuestions[previewQuestion]].filter(Boolean) : activeQuestions;
   const previewProject = { ...project, questions: activeQuestions };
@@ -526,28 +539,7 @@ export default function Home() {
 
   return (
     <div className="studio-shell">
-      <aside className="sidebar">
-        <a href="#accueil" className="sidebar-brand"><span className="brand-glyph" aria-hidden="true">AQ</span><span><strong>L’Atelier Quiz</strong><small>STUDIO LOCAL</small></span></a>
-        <div className="sidebar-label">CRÉATION</div>
-        <nav className="side-nav" aria-label="Sections du studio">
-          <button className="side-nav-link" onClick={() => window.location.assign("/studio-vocal")}><span aria-hidden="true">🎙</span> Studio vocal</button>
-          <button className="side-nav-link" onClick={() => navigate("introduction")}><span>01</span> Introduction</button>
-          <div className="side-nav-group">
-            <button className="side-nav-link side-nav-group-trigger" aria-expanded={openNavGroup === "musiques"} onClick={() => setOpenNavGroup((current) => current === "musiques" ? null : "musiques")}><span>02</span> Musiques &amp; sons <i>{openNavGroup === "musiques" ? "−" : "+"}</i></button>
-            {openNavGroup === "musiques" && <div className="side-nav-submenu"><button onClick={() => navigate("musique-introduction")}>Musique d’introduction</button><button onClick={() => navigate("musique-theme")}>Musique du thème</button><button onClick={() => navigate("son-compte-a-rebours")}>Son du compte à rebours</button><button onClick={() => navigate("son-reponses")}>Son des bonnes réponses</button><button onClick={() => navigate("musique-conclusion")}>Musique de conclusion</button></div>}
-          </div>
-          <a className="side-nav-link" href="/questions"><span>03</span> Questions <small>{project.questions.filter((q) => q.enabled !== false).length}/60</small></a>
-          <button className="side-nav-link" onClick={() => navigate("voix")}><span>04</span> Voix off</button>
-          <button className="side-nav-link" onClick={() => navigate("habillage")}><span>05</span> Décor &amp; logo</button>
-          <button className="side-nav-link" onClick={() => navigate("conclusion")}><span>06</span> Conclusion</button>
-          <div className="sidebar-label sidebar-label-secondary">FINALISATION</div>
-          <button className="side-nav-link" onClick={() => navigate("preview")}><span>07</span> Prévisualisation</button>
-          <button className="side-nav-link" onClick={() => navigate("export")}><span>08</span> Export MP4</button>
-        </nav>
-        <div className="sidebar-spacer" />
-        <div className="local-card"><span className="local-led" /><strong>Projet sur ce PC</strong><small>Questions, médias et voix sont enregistrés dans le dossier du projet.</small></div>
-        <div className="sidebar-version">STUDIO LOCAL · 60 QUESTIONS MAX</div>
-      </aside>
+      <StudioSidebar projectId={projectId} questionCount={project.questions.filter((question) => question.enabled !== false).length} page="studio" />
 
       <main className="studio-main" id="accueil">
         <header className="topbar">
@@ -558,7 +550,7 @@ export default function Home() {
         <div className="workspace">
           <div className="page-heading">
             <div><div className="kicker"><span /> PROTOTYPE VIDÉO · 1920 × 1080 · 30 FPS</div><h1>Préparer le quiz</h1><p>Jusqu’à 60 questions, leurs voix et un rendu MP4 local.</p></div>
-            <div className="project-heading-actions"><label className="project-name-field"><span>NOM DU PROJET</span><input value={project.title} maxLength={120} onChange={(event) => updateProject({ title: event.target.value })} aria-label="Nom du projet" /></label><a className="upload-button" href="/questions">Questions: {project.questions.filter((q) => q.enabled !== false).length} / 60</a></div>
+            <div className="project-heading-actions"><label className="project-name-field"><span>QUIZ / PROJET</span><select value={projectId} onChange={(event) => window.location.assign(`/?id=${encodeURIComponent(event.target.value)}`)} aria-label="Choisir un quiz">{projectOptions.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select><input value={project.title} maxLength={120} onChange={(event) => updateProject({ title: event.target.value })} aria-label="Nom du projet" /></label><button type="button" className="upload-button" onClick={() => void createSecondQuiz()}>＋ Créer un deuxième quiz</button><a className="upload-button" href={`/questions?id=${encodeURIComponent(projectId)}`}>Questions: {project.questions.filter((q) => q.enabled !== false).length} / 60</a></div>
           </div>
 
           {feedback && <div className="feedback" role="status"><span>i</span>{feedback}<button aria-label="Fermer le message" onClick={() => setFeedback("")}>×</button></div>}

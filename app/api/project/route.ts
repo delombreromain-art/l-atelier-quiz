@@ -1,41 +1,21 @@
 import { NextResponse } from "next/server";
-import { unlink } from "node:fs/promises";
-import path from "node:path";
 import { normalizeProject } from "@/lib/quiz";
-import { readProject, saveProject, projectRoot } from "@/lib/storage";
+import { readProject, saveProject } from "@/lib/storage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  const project = await readProject();
+export async function GET(request: Request) {
+  const project = await readProject(new URL(request.url).searchParams.get("id") ?? undefined);
   return NextResponse.json(project, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function PUT(request: Request) {
+  const id = new URL(request.url).searchParams.get("id") ?? undefined;
   const project = normalizeProject(await request.json().catch(() => null));
   if (!project) {
-    return NextResponse.json({ error: "Le projet doit contenir entre 1 et 5000 questions, avec 60 questions actives maximum." }, { status: 400 });
+    return NextResponse.json({ error: "Le projet doit contenir au maximum 5000 questions dans sa bibliothèque et son archive, avec 60 questions actives maximum." }, { status: 400 });
   }
-  const previous = await readProject();
-  await saveProject(project);
-  const recordingPaths = (value: typeof project) => [
-    value.introductionRecording, value.introductionRecordingOriginal, value.conclusionRecording, value.conclusionRecordingOriginal,
-    ...value.introductionRecordingTakes.flatMap((take) => [take.path, take.originalPath]), ...value.conclusionRecordingTakes.flatMap((take) => [take.path, take.originalPath]),
-    ...value.questions.flatMap((question) => [
-      question.questionRecording, question.questionRecordingOriginal,
-      question.answerRecording, question.answerRecordingOriginal,
-      question.commentaryRecording, question.commentaryRecordingOriginal,
-      ...question.questionRecordingTakes.flatMap((take) => [take.path, take.originalPath]),
-      ...question.answerRecordingTakes.flatMap((take) => [take.path, take.originalPath]),
-      ...question.commentaryRecordingTakes.flatMap((take) => [take.path, take.originalPath]),
-    ]),
-  ].filter((asset): asset is string => Boolean(asset));
-  const retained = new Set(recordingPaths(project));
-  const removed = new Set(recordingPaths(previous).filter((asset) => !retained.has(asset)));
-  await Promise.all([...removed].map(async (asset) => {
-    if (!/^audio\/[0-9a-f-]{36}\.(webm|m4a|ogg|wav|mp3)$/i.test(asset)) return;
-    await unlink(path.join(projectRoot, "public", asset)).catch(() => undefined);
-  }));
+  await saveProject(project, id);
   return NextResponse.json({ saved: true }, { headers: { "Cache-Control": "no-store" } });
 }
