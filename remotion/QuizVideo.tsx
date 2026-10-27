@@ -42,14 +42,11 @@ const questionPromptFontSize = (prompt: string) =>
 const questionTitleFontSize = (title: string) =>
   Math.max(24, Math.round(38 * Math.sqrt(32 / Math.max(32, title.length))));
 
-const answerTextFontSize = (answer: string, commentary: string) => {
-  for (let fontSize = 76; fontSize >= 18; fontSize -= 1) {
+const answerTextFontSize = (answer: string) => {
+  for (let fontSize = 96; fontSize >= 18; fontSize -= 1) {
     const answerLines = Math.max(1, Math.ceil(answer.length * fontSize * 0.56 / 1200));
-    const commentaryLines = commentary.trim()
-      ? Math.max(1, Math.ceil(commentary.length * fontSize * 0.56 / 1120))
-      : 0;
-    const estimatedHeight = (answerLines + commentaryLines) * fontSize * 1.16 + (commentaryLines ? 22 : 0);
-    if (estimatedHeight <= 260) return fontSize;
+    const estimatedHeight = answerLines * fontSize * 1.16;
+    if (estimatedHeight <= 270) return fontSize;
   }
   return 18;
 };
@@ -87,7 +84,7 @@ const QuestionAnswerCard: React.FC<{ question: QuizQuestion; number: number; fra
   const answerOffset = interpolate(frame, [questionFrames, questionFrames + 12], [10, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   const promptFontSize = questionPromptFontSize(question.prompt);
   const titleFontSize = questionTitleFontSize(question.title || `QUESTION ${String(number).padStart(2, "0")}`);
-  const answerFontSize = answerTextFontSize(question.answer, question.answerCommentary);
+  const answerFontSize = answerTextFontSize(question.answer);
   return (
     <div style={{ position: "absolute", zIndex: 3, inset: 0, display: "grid", placeItems: "center", padding: "40px 120px 120px", textAlign: "center" }}>
       <div style={{ boxSizing: "border-box", position: "relative", width: 1380, maxWidth: "100%", minHeight: 380, padding: "54px 64px", display: "grid", placeItems: "center", border: "2px solid #d1b36a", outline: "1px solid #f2d88a99", outlineOffset: 9, background: "linear-gradient(135deg, #142019ed, #111913e8 52%, #182019ed)", boxShadow: "0 24px 90px #0009, inset 0 0 70px #d1b36a10", transform: `scale(${scale})` }}>
@@ -97,9 +94,8 @@ const QuestionAnswerCard: React.FC<{ question: QuizQuestion; number: number; fra
           <div style={{ position: "relative", color: "#fff8e9", fontFamily: "Georgia, 'Times New Roman', serif", fontSize: promptFontSize, lineHeight: 1.15, textWrap: "balance", overflowWrap: "anywhere", textShadow: "0 4px 26px #000c", maxWidth: 1200 }}>{question.prompt}</div>
         </div>
         <div style={{ gridArea: "1 / 1", width: "100%", display: "grid", placeItems: "center", opacity: answerAlpha }}>
-          <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: question.answerCommentary.trim() ? 22 : 0, transform: `translateY(${answerOffset}px)`, maxWidth: "100%" }}>
+          <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", transform: `translateY(${answerOffset}px)`, maxWidth: "100%" }}>
             <div style={{ color: "#f1d58d", fontFamily: "Georgia, 'Times New Roman', serif", fontSize: answerFontSize, lineHeight: 1.16, textShadow: `0 0 ${glow}px #e1b95a, 0 3px 28px #000d`, maxWidth: 1200, textWrap: "balance", overflowWrap: "anywhere" }}>{question.answer}</div>
-            {question.answerCommentary.trim() && <div style={{ color: "#fff1cf", fontFamily: "Georgia, 'Times New Roman', serif", fontSize: answerFontSize, lineHeight: 1.16, maxWidth: 1120, textWrap: "balance", overflowWrap: "anywhere", textShadow: "0 2px 12px #000d" }}>{question.answerCommentary}</div>}
           </div>
         </div>
       </div>

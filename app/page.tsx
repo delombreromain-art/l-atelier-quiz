@@ -514,8 +514,8 @@ export default function Home() {
   };
 
   const navigate = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-  const createSecondQuiz = async () => {
-    const title = window.prompt("Nom du deuxième quiz", "Mon deuxième quiz");
+  const createNewQuiz = async () => {
+    const title = window.prompt("Nom du nouveau quiz", "Mon nouveau quiz");
     if (!title?.trim()) return;
     const response = await fetch("/api/projects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ project, title: title.trim() }) });
     const created = await response.json() as { id?: string; error?: string };
@@ -528,7 +528,7 @@ export default function Home() {
       const response = await fetch("/api/archive", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ project }) });
       const result = await response.json() as { folder?: string; questions?: number; images?: number; assets?: number; error?: string };
       if (!response.ok || !result.folder) throw new Error(result.error || "La copie complète n’a pas pu être créée.");
-      setFeedback(`Copie complète créée : C:\\Users\\Romain DELOMBRE\\Desktop\\l'atelier quiz fichiers principaux\\Archive Quiz\\${result.folder} — ${result.questions} questions et ${result.images} images (${result.assets} médias au total).`);
+      setFeedback(`Copie complète créée : C:\\Users\\Romain DELOMBRE\\Desktop\\l'atelier quiz fichiers principaux\\Archive Quiz\\${result.folder} — ${result.questions} questions, leur fichier questions.csv et ${result.images} images (${result.assets} médias au total).`);
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : "La copie complète n’a pas pu être créée.");
     } finally {
@@ -564,7 +564,7 @@ export default function Home() {
         <div className="workspace">
           <div className="page-heading">
             <div><div className="kicker"><span /> PROTOTYPE VIDÉO · 1920 × 1080 · 30 FPS</div><h1>Préparer le quiz</h1><p>Jusqu’à 60 questions, leurs voix et un rendu MP4 local.</p></div>
-            <div className="project-heading-actions"><label className="project-name-field"><span>QUIZ / PROJET</span><select value={projectId} onChange={(event) => window.location.assign(`/?id=${encodeURIComponent(event.target.value)}`)} aria-label="Choisir un quiz">{projectOptions.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select><input value={project.title} maxLength={120} onChange={(event) => updateProject({ title: event.target.value })} aria-label="Nom du projet" /></label><button type="button" className="upload-button" onClick={() => void createSecondQuiz()}>＋ Créer un deuxième quiz</button><button type="button" className="upload-button archive-export-button" title="Crée une copie datée des questions, archives, images et médias dans le dossier Archive Quiz." onClick={() => void exportCompleteArchive()} disabled={!loaded || saveState !== "saved" || Boolean(mediaBusy) || voiceBusy || archiveBusy}>{archiveBusy ? "Copie en cours…" : "Copie complète · questions + images"}</button><a className="upload-button" href={`/questions?id=${encodeURIComponent(projectId)}`}>Questions: {project.questions.filter((q) => q.enabled !== false).length} / 60</a></div>
+            <div className="project-heading-actions"><label className="project-name-field"><span>QUIZ / PROJET</span><select value={projectId} onChange={(event) => window.location.assign(`/?id=${encodeURIComponent(event.target.value)}`)} aria-label="Choisir un quiz">{projectOptions.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select><input value={project.title} maxLength={120} onChange={(event) => updateProject({ title: event.target.value })} aria-label="Nom du projet" /></label><button type="button" className="upload-button" onClick={() => void createNewQuiz()}>＋ Créer un nouveau quiz</button><button type="button" className="upload-button archive-export-button" title="Crée une copie datée des questions (JSON et CSV), archives, images et médias dans le dossier Archive Quiz." onClick={() => void exportCompleteArchive()} disabled={!loaded || saveState !== "saved" || Boolean(mediaBusy) || voiceBusy || archiveBusy}>{archiveBusy ? "Copie en cours…" : "Copie complète · questions + CSV"}</button><a className="upload-button" href={`/questions?id=${encodeURIComponent(projectId)}`}>Questions: {project.questions.filter((q) => q.enabled !== false).length} / 60</a></div>
           </div>
 
           {feedback && <div className="feedback" role="status"><span>i</span>{feedback}<button aria-label="Fermer le message" onClick={() => setFeedback("")}>×</button></div>}

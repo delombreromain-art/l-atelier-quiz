@@ -33,6 +33,15 @@ function safeFolderName(title: string) {
   return title.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 70) || "quiz";
 }
 
+function questionsCsv(project: NonNullable<ReturnType<typeof normalizeProject>>) {
+  const escapeCell = (value: string) => `"${value.replace(/"/g, '""')}"`;
+  const questions = [...project.questions, ...project.archivedQuestions];
+  return [
+    ["titre", "question", "reponse", "commentaire"],
+    ...questions.map((question) => [question.title, question.prompt, question.answer, question.answerCommentary]),
+  ].map((row) => row.map(escapeCell).join(";")).join("\r\n");
+}
+
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null) as { project?: unknown } | null;
   const project = normalizeProject(body?.project);
@@ -61,11 +70,14 @@ export async function POST(request: Request) {
     await writeFile(temporaryProjectPath, JSON.stringify(project, null, 2), { encoding: "utf8", flag: "wx" });
     await rename(temporaryProjectPath, path.join(archiveDirectory, "project.json"));
 
+    await writeFile(path.join(archiveDirectory, "questions.csv"), `\uFEFF${questionsCsv(project)}`, { encoding: "utf8", flag: "wx" });
+
     const manifest = {
       exportedAt: new Date().toISOString(),
       projectTitle: project.title,
       questions: project.questions.length,
       archivedQuestions: project.archivedQuestions.length,
+      questionsCsv: "questions.csv",
       assets,
     };
     await writeFile(path.join(archiveDirectory, "archive-manifest.json"), JSON.stringify(manifest, null, 2), { encoding: "utf8", flag: "wx" });
