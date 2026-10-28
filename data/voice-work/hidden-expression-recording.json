@@ -1,0 +1,32 @@
+{
+  "sourceQuestionId": "question-19957e72-062c-4b04-a8c8-dc46b217c335",
+  "theme": "Guess the Hidden Expression!",
+  "questionRecording": "audio/fa80f69e-d041-47e2-b4a2-a54f4dbff988.wav",
+  "questionRecordingDuration": 1.7572291666666666,
+  "questionRecordingOriginal": "audio/8d6db30b-92ed-4121-a182-cb2eb9b588cd.webm",
+  "questionRecordingOriginalDuration": 7.473,
+  "questionRecordingTakes": [
+    {
+      "id": "d7f71b66-107a-4419-b349-474f49c9546e",
+      "path": "audio/423828a5-d539-41ae-89a0-b0fd1f518bb2.wav",
+      "duration": 1.7572291666666666,
+      "originalPath": "audio/8d6db30b-92ed-4121-a182-cb2eb9b588cd.webm",
+      "originalDuration": 7.473
+    },
+    {
+      "id": "original-3f254ed6-60f8-4ce0-a7e5-2d39dbf20861",
+      "path": "audio/8d6db30b-92ed-4121-a182-cb2eb9b588cd.webm",
+      "duration": 7.473
+    }
+  ],
+  "questionRecordingClips": [
+    {
+      "id": "13e2e002-41f4-4e97-94a6-60ba8a7c5a8c",
+      "takeId": "d7f71b66-107a-4419-b349-474f49c9546e",
+      "start": 0,
+      "end": 1.7572291666666666,
+      "pauseAfter": 0,
+      "transitionMs": 8
+    }
+  ]
+}

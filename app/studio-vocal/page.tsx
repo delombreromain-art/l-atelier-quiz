@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { QuizProject, QuizQuestion, RecordingClip, RecordingTake, VoiceSource } from "@/lib/quiz";
+import { RIDDLE_TITLE, type QuizProject, type QuizQuestion, type RecordingClip, type RecordingTake, type VoiceSource } from "@/lib/quiz";
 import { StudioSidebar } from "../StudioSidebar";
 import { VoiceRecorder, type VoiceRecorderHandle } from "../VoiceRecorder";
 import "../studio.css";
@@ -33,7 +33,7 @@ const kindLabels: Record<NarrationKind, string> = {
 const makeQuestionStep = (question: QuizQuestion, index: number, kind: "question" | "answer", project: QuizProject): VoiceStep => ({
   key: `${question.id}:${kind}`,
   kind,
-  text: kind === "question" ? question.prompt : [question.answer, question.answerCommentary].filter((part) => part.trim()).join("\n\n"),
+  text: kind === "question" ? question.prompt.trim() || (question.isRiddle && question.image ? RIDDLE_TITLE : "") : [question.answer, question.answerCommentary].filter((part) => part.trim()).join("\n\n"),
   questionId: question.id,
   questionNumber: index + 1,
   path: question[`${kind}Recording`],
@@ -50,7 +50,7 @@ const buildSteps = (project: QuizProject): VoiceStep[] => {
   const steps: VoiceStep[] = [];
   if (project.introductionText.trim()) steps.push({ key: "introduction", kind: "introduction", text: project.introductionText, path: project.introductionRecording, duration: project.introductionRecordingDuration, originalPath: project.introductionRecordingOriginal, originalDuration: project.introductionRecordingOriginalDuration, takes: project.introductionRecordingTakes, clips: project.introductionRecordingClips, source: project.introductionVoiceSource, aiAvailable: Boolean(project.introductionAudio && project.introductionAudioVoice === project.voice && project.introductionAudioRate === project.speechRate) });
   project.questions.forEach((question, index) => {
-    if (question.prompt.trim()) steps.push(makeQuestionStep(question, index, "question", project));
+    if (question.prompt.trim() || (question.isRiddle && question.image)) steps.push(makeQuestionStep(question, index, "question", project));
     if (question.answer.trim()) steps.push(makeQuestionStep(question, index, "answer", project));
   });
   if (project.conclusionText.trim()) steps.push({ key: "conclusion", kind: "conclusion", text: project.conclusionText, path: project.conclusionRecording, duration: project.conclusionRecordingDuration, originalPath: project.conclusionRecordingOriginal, originalDuration: project.conclusionRecordingOriginalDuration, takes: project.conclusionRecordingTakes, clips: project.conclusionRecordingClips, source: project.conclusionVoiceSource, aiAvailable: Boolean(project.conclusionAudio && project.conclusionAudioVoice === project.voice && project.conclusionAudioRate === project.speechRate) });

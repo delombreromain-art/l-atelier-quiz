@@ -18,6 +18,7 @@ export const INTRODUCTION_FRAMES = DEFAULT_INTRODUCTION_SECONDS * FPS;
 export const INTRODUCTION_QUESTION_GAP_FRAMES = FPS;
 export const MAX_QUESTIONS = 60;
 export const MAX_QUESTION_LIBRARY = 5000;
+export const RIDDLE_TITLE = "Guess the Hidden Expression!";
 
 export type VoiceId = "fr_FR-siwis-medium" | "fr_FR-upmc-medium" | "fr_FR-tom-medium" | "fr_FR-mls-medium";
 export type VoiceSource = "ai" | "recording";
@@ -57,6 +58,7 @@ export type QuizQuestion = {
   answer: string;
   answerCommentary: string;
   force15Seconds: boolean;
+  isRiddle: boolean;
   image: string | null;
   answerImage: string | null;
   themeImage: string | null;
@@ -172,6 +174,7 @@ export const makeQuestion = (number: number): QuizQuestion => ({
   answer: "",
   answerCommentary: "",
   force15Seconds: false,
+  isRiddle: false,
   image: null,
   answerImage: null,
   themeImage: null,
@@ -496,11 +499,12 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
       ...makeQuestion(index + 1),
       id: questionId,
       enabled: row.enabled !== false,
-      title: typeof row.title === "string" ? row.title : "",
+      title: row.isRiddle === true ? RIDDLE_TITLE : typeof row.title === "string" ? row.title : "",
       prompt: row.prompt,
       answer: row.answer,
       answerCommentary: typeof row.answerCommentary === "string" ? row.answerCommentary : "",
       force15Seconds: row.force15Seconds === true,
+      isRiddle: row.isRiddle === true,
       image: typeof row.image === "string" ? row.image : null,
       answerImage: typeof row.answerImage === "string" ? row.answerImage : null,
       themeImage: typeof row.themeImage === "string" ? row.themeImage : null,

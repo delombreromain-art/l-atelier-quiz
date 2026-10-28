@@ -12,7 +12,44 @@ export const exportsDirectory = path.join(dataDirectory, "exports");
 const DEFAULT_PROJECT_ID = "principal";
 const safeId = (id?: string) => id && /^[a-z0-9-]{1,80}$/i.test(id) ? id : DEFAULT_PROJECT_ID;
 const fileFor = (id: string) => id === DEFAULT_PROJECT_ID ? projectFile : path.join(projectsDirectory, `${id}.json`);
+const riddleRecordingTemplateFile = path.join(dataDirectory, "voice-work", "hidden-expression-recording.json");
 type ProjectIndex = { projects: { id: string; title: string }[] };
+
+type RiddleRecordingTemplate = {
+  questionRecording: string;
+  questionRecordingDuration: number;
+  questionRecordingOriginal: string | null;
+  questionRecordingOriginalDuration: number | null;
+  questionRecordingTakes: QuizProject["questions"][number]["questionRecordingTakes"];
+  questionRecordingClips: QuizProject["questions"][number]["questionRecordingClips"];
+};
+
+const applyRiddleRecordingTemplate = async (project: QuizProject): Promise<QuizProject> => {
+  let template: RiddleRecordingTemplate;
+  try {
+    template = JSON.parse(await readFile(riddleRecordingTemplateFile, "utf8")) as RiddleRecordingTemplate;
+  } catch {
+    return project;
+  }
+  if (!template.questionRecording || !Number.isFinite(template.questionRecordingDuration)) return project;
+  let changed = false;
+  const questions = project.questions.map((question) => {
+    if (!question.isRiddle || question.questionRecording) return question;
+    const takeIds = new Map(template.questionRecordingTakes.map((take) => [take.id, randomUUID()]));
+    changed = true;
+    return {
+      ...question,
+      questionRecording: template.questionRecording,
+      questionRecordingDuration: template.questionRecordingDuration,
+      questionRecordingOriginal: template.questionRecordingOriginal,
+      questionRecordingOriginalDuration: template.questionRecordingOriginalDuration,
+      questionRecordingTakes: template.questionRecordingTakes.map((take) => ({ ...take, id: takeIds.get(take.id) ?? randomUUID() })),
+      questionRecordingClips: template.questionRecordingClips.map((clip) => ({ ...clip, id: randomUUID(), takeId: takeIds.get(clip.takeId) ?? clip.takeId })),
+      questionVoiceSource: "recording" as const,
+    };
+  });
+  return changed ? { ...project, questions } : project;
+};
 
 export const ensureProjectFolders = async () => {
   await Promise.all([
@@ -41,7 +78,8 @@ export const listProjects = async () => {
 export const createProject = async (project: QuizProject, title: string) => {
   const index = await readIndex();
   const id = randomUUID();
-  const copy = { ...project, title: title.slice(0, 120) || "Nouveau quiz", questions: project.questions.map((question) => ({ ...question })), archivedQuestions: project.archivedQuestions.map((question) => ({ ...question })) };
+  const templatedProject = await applyRiddleRecordingTemplate(project);
+  const copy = { ...templatedProject, title: title.slice(0, 120) || "Nouveau quiz", questions: templatedProject.questions.map((question) => ({ ...question })), archivedQuestions: templatedProject.archivedQuestions.map((question) => ({ ...question })) };
   await writeFile(fileFor(id), JSON.stringify(copy, null, 2), "utf8");
   index.projects.push({ id, title: copy.title });
   await writeFile(projectIndexFile, JSON.stringify(index, null, 2), "utf8");
@@ -64,10 +102,11 @@ export const readProject = async (id?: string): Promise<QuizProject> => {
 export const saveProject = async (project: QuizProject, id?: string) => {
   await ensureProjectFolders();
   const selectedId = safeId(id);
-  await writeFile(fileFor(selectedId), JSON.stringify(project, null, 2), "utf8");
+  const templatedProject = await applyRiddleRecordingTemplate(project);
+  await writeFile(fileFor(selectedId), JSON.stringify(templatedProject, null, 2), "utf8");
   const index = await readIndex();
   const entry = index.projects.find((item) => item.id === selectedId);
-  if (entry) entry.title = project.title;
-  else index.projects.push({ id: selectedId, title: project.title });
+  if (entry) entry.title = templatedProject.title;
+  else index.projects.push({ id: selectedId, title: templatedProject.title });
   await writeFile(projectIndexFile, JSON.stringify(index, null, 2), "utf8");
 };

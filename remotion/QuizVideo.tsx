@@ -14,6 +14,7 @@ import {
   CONCLUSION_VOICE_DELAY_FRAMES,
   ENDING_PAUSE_FRAMES,
   FPS,
+  RIDDLE_TITLE,
   THEME_FRAMES,
   conclusionDurationFrames,
   introductionDurationFrames,
@@ -34,7 +35,7 @@ import {
 const toPublicUrl = (asset: string) => staticFile(asset.replace(/^\/+/, ""));
 const QUESTION_IMAGE_WIDTH = 600;
 const QUESTION_IMAGE_HEIGHT = 340;
-const QUESTION_IMAGE_BOTTOM_MARGIN = 30;
+const QUESTION_IMAGE_BOTTOM_MARGIN = 10;
 
 const questionPromptFontSize = (prompt: string) =>
   Math.max(20, Math.round(72 * Math.sqrt(75 / Math.max(75, prompt.length))));
@@ -83,16 +84,25 @@ const QuestionAnswerCard: React.FC<{ question: QuizQuestion; number: number; fra
   const scale = interpolate(frame, [0, 22], [1.025, 1], { extrapolateRight: "clamp" });
   const answerOffset = interpolate(frame, [questionFrames, questionFrames + 12], [10, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   const promptFontSize = questionPromptFontSize(question.prompt);
-  const titleFontSize = questionTitleFontSize(question.title || `QUESTION ${String(number).padStart(2, "0")}`);
+  const titleFontSize = questionTitleFontSize(question.isRiddle ? RIDDLE_TITLE : question.title || `QUESTION ${String(number).padStart(2, "0")}`);
   const answerFontSize = answerTextFontSize(question.answer);
   return (
     <div style={{ position: "absolute", zIndex: 3, inset: 0, display: "grid", placeItems: "center", padding: "40px 120px 120px", textAlign: "center" }}>
-      <div style={{ boxSizing: "border-box", position: "relative", width: 1380, maxWidth: "100%", minHeight: 380, padding: "54px 64px", display: "grid", placeItems: "center", border: "2px solid #d1b36a", outline: "1px solid #f2d88a99", outlineOffset: 9, background: "linear-gradient(135deg, #142019ed, #111913e8 52%, #182019ed)", boxShadow: "0 24px 90px #0009, inset 0 0 70px #d1b36a10", transform: `scale(${scale})` }}>
+      <div style={{ boxSizing: "border-box", position: "relative", width: 1380, maxWidth: "100%", minHeight: question.isRiddle ? 640 : 380, height: question.isRiddle ? 640 : "auto", padding: question.isRiddle ? 0 : "54px 64px", overflow: question.isRiddle ? "hidden" : "visible", display: "grid", placeItems: "center", border: "2px solid #d1b36a", outline: "1px solid #f2d88a99", outlineOffset: 9, background: "linear-gradient(135deg, #142019ed, #111913e8 52%, #182019ed)", boxShadow: "0 24px 90px #0009, inset 0 0 70px #d1b36a10", transform: `scale(${scale})` }}>
         <div style={{ position: "absolute", inset: 12, border: "1px solid #d1b36a55", pointerEvents: "none" }} />
-        <div style={{ gridArea: "1 / 1", width: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", opacity: questionAlpha }}>
-          <div style={{ position: "relative", color: "#d1b36a", fontSize: titleFontSize, fontWeight: 600, letterSpacing: 8, marginBottom: 22, textTransform: "uppercase", maxWidth: 1200, textWrap: "balance", overflowWrap: "anywhere" }}>{question.title ? question.title : `QUESTION ${String(number).padStart(2, "0")}`}</div>
-          <div style={{ position: "relative", color: "#fff8e9", fontFamily: "Georgia, 'Times New Roman', serif", fontSize: promptFontSize, lineHeight: 1.15, textWrap: "balance", overflowWrap: "anywhere", textShadow: "0 4px 26px #000c", maxWidth: 1200 }}>{question.prompt}</div>
-        </div>
+        {question.isRiddle ? (
+          <div style={{ position: "absolute", inset: 14, overflow: "hidden", opacity: questionAlpha }}>
+            {question.image && <Img src={toPublicUrl(question.image)} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />}
+            <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, #08100de8 0%, #08100d8c 22%, #08100d00 56%, #08100d22 100%)" }} />
+            <div style={{ position: "absolute", top: 26, left: 30, right: 30, color: "#f0d485", fontSize: Math.max(56, titleFontSize), fontWeight: 600, letterSpacing: 8, lineHeight: 1.15, textShadow: "0 3px 20px #000", textAlign: "center" }}>{RIDDLE_TITLE}</div>
+            {!question.image && <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: "#fff1cf", fontSize: 24 }}>Add a photo to this riddle.</div>}
+          </div>
+        ) : (
+          <div style={{ gridArea: "1 / 1", width: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", opacity: questionAlpha }}>
+            <div style={{ position: "relative", color: "#d1b36a", fontSize: titleFontSize, fontWeight: 600, letterSpacing: 8, marginBottom: 22, textTransform: "uppercase", maxWidth: 1200, textWrap: "balance", overflowWrap: "anywhere" }}>{question.title ? question.title : "QUESTION " + String(number).padStart(2, "0")}</div>
+            <div style={{ position: "relative", color: "#fff8e9", fontFamily: "Georgia, 'Times New Roman', serif", fontSize: promptFontSize, lineHeight: 1.15, textWrap: "balance", overflowWrap: "anywhere", textShadow: "0 4px 26px #000c", maxWidth: 1200 }}>{question.prompt}</div>
+          </div>
+        )}
         <div style={{ gridArea: "1 / 1", width: "100%", display: "grid", placeItems: "center", opacity: answerAlpha }}>
           <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", transform: `translateY(${answerOffset}px)`, maxWidth: "100%" }}>
             <div style={{ color: "#f1d58d", fontFamily: "Georgia, 'Times New Roman', serif", fontSize: answerFontSize, lineHeight: 1.16, textShadow: `0 0 ${glow}px #e1b95a, 0 3px 28px #000d`, maxWidth: 1200, textWrap: "balance", overflowWrap: "anywhere" }}>{question.answer}</div>
@@ -451,7 +461,7 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
           <IntroductionComposition background={project.introductionImage || project.background} layers={project.introductionLayers} durationFrames={introFrames} />
         </>
         : isConclusion ? null : <Backdrop image={project.background} />}
-      {!isConclusion && hasQuestionStarted && localFrame < questionFrames && <Illustration image={question.image} />}
+      {!isConclusion && hasQuestionStarted && localFrame < questionFrames && !question.isRiddle && <Illustration image={question.image} />}
       {!isConclusion && hasQuestionStarted && localFrame >= questionFrames && localFrame < questionFrames + answerFrames + finalAnswerHoldFrames && <Illustration image={question.answerImage || (question.keepImageOnAnswer ? question.image : null)} />}
       {!isConclusion && hasQuestionStarted && localFrame < questionFrames + answerFrames + finalAnswerHoldFrames && <QuestionAnswerCard question={question} number={questionNumber} frame={localFrame} questionFrames={questionFrames} answerFrames={answerFrames} />}
       {!isConclusion && hasQuestionStarted && localFrame < questionFrames && <Timer frame={localFrame} duration={questionFrames} />}
@@ -463,9 +473,6 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
       {!isConclusion && isHourglassTransitionVariation && <Timer frame={questionFrames} duration={questionFrames} displaySeconds={false} transitionPulse={transitionProgress} />}
       {!isOpeningTheme && !isConclusion && <Logo source={project.logo} />}
       {!isConclusion && hasQuestionStarted && <div style={{ position: "absolute", zIndex: 20, bottom: 72, left: 64, color: "#e4c574", fontSize: 34, fontWeight: 700, letterSpacing: 5, lineHeight: 1, textShadow: "0 2px 10px #000" }}>{String(questionNumber).padStart(2, "0")} / {String(project.questions.length).padStart(2, "0")}</div>}
-      {!isOpeningTheme && !isConclusion && <div style={{ position: "absolute", zIndex: 1, inset: 18, border: "1px solid #dfc27650" }} />}
-      {!isOpeningTheme && !isConclusion && <div style={{ position: "absolute", zIndex: 1, top: 39, right: 47, width: 18, height: 18, borderTop: "1px solid #dfc27688", borderRight: "1px solid #dfc27688" }} />}
-      {!isOpeningTheme && !isConclusion && <div style={{ position: "absolute", zIndex: 1, bottom: 39, left: 47, width: 18, height: 18, borderBottom: "1px solid #dfc27688", borderLeft: "1px solid #dfc27688" }} />}
       {outroFrames > 0 && frame >= conclusionStartFrame && <ConclusionComposition background={project.conclusionBackgroundImage} images={[{ source: project.conclusionImage, layer: project.conclusionLayer }, { source: project.conclusionImage2, layer: project.conclusionLayer2 }, { source: project.conclusionImage3, layer: project.conclusionLayer3 }]} frame={conclusionLocalFrame} durationFrames={outroFrames} opacity={interpolate(conclusionLocalFrame, [0, conclusionFadeFrames], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) })} />}
     </div>
   );

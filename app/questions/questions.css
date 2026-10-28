@@ -11,3 +11,11 @@
 .ql-order-hint{display:block;margin:5px 0;color:#858379;font-size:11px}.ql-drag-handle:hover{background:#363225;border-color:#b39956}
 .ql-top{position:sticky;top:0;z-index:50;background:#11120f;padding-top:14px;padding-bottom:18px}
 .ql-button.ql-danger{border-color:#67413c;color:#e0aaa2}.ql-button.ql-danger:hover{border-color:#b26e63;background:#2b1d1b}.ql-button:disabled{opacity:.45;cursor:not-allowed}
+
+.ql-riddle-toggle{display:flex;align-items:center;gap:9px;margin:0 0 10px;padding:10px 11px;border:1px solid #5d5132;border-radius:5px;background:#201f18;color:#e0ca82;cursor:pointer}.ql-riddle-toggle input{width:15px;height:15px;margin:0;accent-color:#c5a650}.ql-riddle-toggle span{font-size:11px;font-weight:700}.ql-riddle-toggle small{color:#a8a18a;font-size:10px;line-height:1.4}
+
+.question-library{padding-bottom:110px}.ql-add-question{position:fixed;right:28px;bottom:22px;z-index:120;min-height:48px;padding:0 18px;background:#d0b15e;border-color:#d0b15e;color:#1b1a14;font-weight:700;box-shadow:0 5px 24px #000b}.ql-add-question:hover{background:#e2c979;border-color:#e2c979}.ql-add-question:disabled{opacity:.55}@media(max-width:520px){.question-library{padding-bottom:90px}.ql-add-question{right:14px;bottom:14px;min-height:44px}}
+
+.ql-field input:disabled,.ql-field textarea:disabled{opacity:.62;cursor:not-allowed;color:#c9b980}
+
+.ql-shuffle{border-color:#76643c;color:#e0ce91}.ql-shuffle:hover{background:#302b1d;border-color:#b39956}
