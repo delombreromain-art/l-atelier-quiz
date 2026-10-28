@@ -343,6 +343,7 @@ export default function VoiceStudioPage() {
   const skippedCount = skipped.filter((key) => steps.some((step) => step.key === key && !step.path)).length;
   const remainingCount = Math.max(0, steps.length - recordedCount - skippedCount);
   const progress = steps.length ? Math.round(((recordedCount + skippedCount) / steps.length) * 100) : 0;
+  const questionSteps = steps.filter((step) => step.kind === "question");
   const statusOf = (step: VoiceStep, index: number) => index === currentIndex && starting
     ? "Démarrage…" : index === currentIndex && (recording || saving) ? "En cours" : index === currentIndex && pendingTake ? "À sauvegarder" : step.path ? "Enregistré" : skipped.includes(step.key) ? "Ignoré" : "À enregistrer";
 
@@ -360,7 +361,7 @@ export default function VoiceStudioPage() {
         {loadError && <div className="feedback" role="alert">{loadError}</div>}
         {project && <>
           <section className="voice-progress-panel">
-            <div className="voice-progress-top"><div><strong>{project.title}</strong><span>{steps.length ? currentIndex + 1 : 0} / {steps.length} étapes</span></div><label className="voice-auto-toggle"><input type="checkbox" checked={autoAdvance} onChange={(event) => setAutoAdvance(event.target.checked)} /> Avancer automatiquement après sauvegarde</label></div>
+            <div className="voice-progress-top"><div><strong>{project.title}</strong><span>{steps.length ? currentIndex + 1 : 0} / {steps.length} étapes</span></div><div className="voice-progress-actions"><label className="voice-direct-jump"><span>ALLER À LA QUESTION</span><select aria-label="Aller directement à la question" value={activeStep?.kind === "question" ? String(activeStep.questionNumber) : ""} disabled={starting || recording || saving || pendingTake} onChange={(event) => { const target = steps.findIndex((step) => step.kind === "question" && step.questionNumber === Number(event.target.value)); if (target >= 0) setCurrentIndex(target); }}><option value="">Choisir un numéro…</option>{questionSteps.map((step) => <option key={step.key} value={step.questionNumber}>{`Question ${step.questionNumber} · ${step.text}`}</option>)}</select></label><label className="voice-auto-toggle"><input type="checkbox" checked={autoAdvance} onChange={(event) => setAutoAdvance(event.target.checked)} /> Avancer automatiquement après sauvegarde</label></div></div>
             <div className="voice-progress-stats"><span><b>{recordedCount}</b> enregistrés</span><span><b>{remainingCount}</b> restants</span><span><b>{skippedCount}</b> ignorés</span><span><b>{steps.length}</b> narrations</span></div>
             <div className="voice-progress-track"><span style={{ width: `${progress}%` }} /></div>
           </section>
