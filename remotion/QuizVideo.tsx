@@ -228,7 +228,7 @@ const IntroductionComposition: React.FC<{ background: string | null; layers: Int
     geography: { start: 5, duration: 1.2, scale: 0.92, rise: 10, light: true },
     science: { start: 5, duration: 1.2, scale: 0.92, rise: 10, light: true },
     cinema: { start: 5, duration: 1.2, scale: 0.92, rise: 10, light: true },
-    hourglass: { start: 10, duration: 1, scale: 0.96, rise: 0, light: true, spinAt: 15, spinDuration: 1.6, shine: 17.6, shineDuration: 0.4 },
+    hourglass: { start: 12, duration: 1, scale: 0.96, rise: 0, light: true, spinAt: 17, spinDuration: 1.6, shine: 19.6, shineDuration: 0.4 },
   };
 
   return (
