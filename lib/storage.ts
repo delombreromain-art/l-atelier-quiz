@@ -2,6 +2,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { defaultProject, normalizeProject, type QuizProject } from "./quiz";
+import { trimTrailingSilenceForLoop } from "./music-loop";
 
 export const projectRoot = process.cwd();
 export const dataDirectory = path.join(projectRoot, "data");
@@ -79,7 +80,9 @@ export const createProject = async (project: QuizProject, title: string) => {
   const index = await readIndex();
   const id = randomUUID();
   const templatedProject = await applyRiddleRecordingTemplate(project);
-  const copy = { ...templatedProject, title: title.slice(0, 120) || "Nouveau quiz", questions: templatedProject.questions.map((question) => ({ ...question })), archivedQuestions: templatedProject.archivedQuestions.map((question) => ({ ...question })) };
+  const music = templatedProject.backgroundMusic ? await trimTrailingSilenceForLoop(templatedProject.backgroundMusic) : null;
+  const projectToCopy = music?.trimmed ? { ...templatedProject, backgroundMusic: music.path } : templatedProject;
+  const copy = { ...projectToCopy, title: title.slice(0, 120) || "Nouveau quiz", questions: projectToCopy.questions.map((question) => ({ ...question })), archivedQuestions: projectToCopy.archivedQuestions.map((question) => ({ ...question })) };
   await writeFile(fileFor(id), JSON.stringify(copy, null, 2), "utf8");
   index.projects.push({ id, title: copy.title });
   await writeFile(projectIndexFile, JSON.stringify(index, null, 2), "utf8");

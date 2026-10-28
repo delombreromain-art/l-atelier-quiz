@@ -4,6 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { NextResponse } from "next/server";
+import { trimTrailingSilenceForLoop } from "@/lib/music-loop";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,6 +50,7 @@ export async function POST(request: Request) {
   await mkdir(directory, { recursive: true });
   const destination = path.join(directory, name);
   await writeFile(destination, Buffer.from(await file.arrayBuffer()), { flag: "wx" });
-  const duration = await measureAudio(destination).catch(() => null);
-  return NextResponse.json({ path: `music/${name}`, originalName: file.name, duration });
+  let result = { path: `music/${name}`, trimmed: false, duration: await measureAudio(destination).catch(() => null) };
+  if (form.get("loopable") === "true") result = await trimTrailingSilenceForLoop(result.path);
+  return NextResponse.json({ ...result, originalName: file.name });
 }

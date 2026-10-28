@@ -258,12 +258,12 @@ export default function Home() {
   const uploadMusic = useCallback(async (file: File) => {
     setMediaBusy("background-music"); setFeedback("");
     try {
-      const body = new FormData(); body.set("file", file);
+      const body = new FormData(); body.set("file", file); body.set("loopable", "true");
       const response = await fetch("/api/music", { method: "POST", body });
-      const result = await response.json() as { path?: string; error?: string };
+      const result = await response.json() as { path?: string; trimmed?: boolean; error?: string };
       if (!response.ok || !result.path) throw new Error(result.error || "Import de la musique impossible.");
       updateProject({ backgroundMusic: result.path });
-      setFeedback(`${file.name} ajouté comme musique de fond globale.`);
+      setFeedback(`${file.name} ajouté comme musique de fond globale.${result.trimmed ? " Le silence final a été retiré pour raccourcir la boucle." : ""}`);
     } catch (error) { setFeedback(error instanceof Error ? error.message : "Import de la musique impossible."); }
     finally { setMediaBusy(""); }
   }, [updateProject]);
