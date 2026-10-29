@@ -3,6 +3,8 @@
 import Image from "next/image";
 import { useRef, useState, type MouseEvent, type PointerEvent, type SyntheticEvent } from "react";
 import {
+  DECOR_LOGO_LAYER_DEFAULT,
+  INTRODUCTION_DELAYED_SCENE_DEFAULTS,
   INTRODUCTION_LAYER_DEFAULTS,
   type IntroductionLayer,
   type IntroductionLayerId,
@@ -31,6 +33,7 @@ export function IntroductionEditor({
   background,
   backgroundIsFallback,
   layers,
+  mode = "full",
   busy,
   onUploadBackground,
   onRemoveBackground,
@@ -40,12 +43,20 @@ export function IntroductionEditor({
   background: string | null;
   backgroundIsFallback: boolean;
   layers: IntroductionLayers;
+  mode?: "full" | "delayed" | "main";
   busy: string;
   onUploadBackground: (file: File) => void;
   onRemoveBackground: () => void;
   onUploadLayer: (id: IntroductionLayerId, file: File) => void;
   onUpdateLayers: (next: IntroductionLayers) => void;
 }) {
+  const layerFields = mode === "delayed"
+    ? [{ id: "logo" as const, label: "Logo · apparition différée" }, { id: "questionsPanel" as const, label: "Panneau 60 QUESTIONS · apparition différée" }]
+    : mode === "main"
+      ? [{ id: "logo" as const, label: "Logo global du quiz" }]
+      : LAYER_FIELDS;
+  const backgroundBusyKey = mode === "delayed" ? "introduction-delayed-image" : mode === "main" ? "background" : "introduction-image";
+  const layerBusyKey = (id: IntroductionLayerId) => mode === "delayed" ? `introduction-delayed-layer-${id}` : mode === "main" ? "logo" : `introduction-layer-${id}`;
   const stageRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const [selectedIds, setSelectedIds] = useState<IntroductionLayerId[]>([]);
@@ -71,7 +82,7 @@ export function IntroductionEditor({
     });
   };
 
-  const visibleLayerIds = LAYER_FIELDS.map(({ id }) => id).filter((id) => layers[id].image && layers[id].visible);
+  const visibleLayerIds = layerFields.map(({ id }) => id).filter((id) => layers[id].image && layers[id].visible);
   const activeSelection = selectedIds.filter((id) => visibleLayerIds.includes(id));
   const getBounds = (ids: IntroductionLayerId[]): LayerBounds | null => {
     const active = ids.filter((id) => visibleLayerIds.includes(id));
@@ -193,12 +204,18 @@ export function IntroductionEditor({
   };
 
   const resetLayer = (id: IntroductionLayerId) => {
-    const defaults = INTRODUCTION_LAYER_DEFAULTS[id];
+    const defaults = mode === "main"
+      ? DECOR_LOGO_LAYER_DEFAULT
+      : mode === "delayed" && id === "logo"
+        ? INTRODUCTION_DELAYED_SCENE_DEFAULTS.logo
+        : mode === "delayed"
+          ? INTRODUCTION_DELAYED_SCENE_DEFAULTS.questionsPanel
+          : INTRODUCTION_LAYER_DEFAULTS[id];
     updateLayer(id, { x: defaults.x, y: defaults.y, width: defaults.width, zIndex: defaults.zIndex, visible: true });
   };
 
   const moveOrder = (id: IntroductionLayerId, direction: -1 | 1) => {
-    const ordered = LAYER_FIELDS.map((field) => field.id).sort((a, b) => layers[a].zIndex - layers[b].zIndex);
+    const ordered = layerFields.map((field) => field.id).sort((a, b) => layers[a].zIndex - layers[b].zIndex);
     const index = ordered.indexOf(id);
     const nextIndex = Math.max(0, Math.min(ordered.length - 1, index + direction));
     if (nextIndex === index) return;
@@ -208,10 +225,10 @@ export function IntroductionEditor({
     onUpdateLayers(next);
   };
 
-  const orderedLayers = LAYER_FIELDS.map((field) => ({ ...field, config: layers[field.id] })).sort((a, b) => a.config.zIndex - b.config.zIndex);
+  const orderedLayers = layerFields.map((field) => ({ ...field, config: layers[field.id] })).sort((a, b) => a.config.zIndex - b.config.zIndex);
   const selectionBounds = getBounds(activeSelection);
 
-  return <div className="intro-composer">
+  return <div className={`intro-composer ${mode === "delayed" ? "intro-composer-delayed" : ""}`}>
     <div className="intro-editor-heading"><div><strong>COMPOSITION 16:9</strong><small>Glissez les calques. Ctrl+clic pour en sélectionner plusieurs et déplacer ou redimensionner le groupe{activeSelection.length > 1 ? ` · ${activeSelection.length} sélectionnés` : ""}.</small></div><div className="intro-editor-view-tools"><button type="button" className={showGuides && !asPreview ? "active" : ""} onClick={() => setShowGuides((current) => !current)}>Repères</button><button type="button" className={asPreview ? "active" : ""} onClick={() => setAsPreview((current) => !current)}>{asPreview ? "Modifier les calques" : "Aperçu sans poignées"}</button></div></div>
     <div
       ref={stageRef}
@@ -255,11 +272,11 @@ export function IntroductionEditor({
       </>}
     </div>
     <div className="intro-layer-list">
-      <div className="intro-layer-list-heading"><strong>CALQUES PNG TRANSPARENTS</strong><small>Le fond reste indépendant. Importez chaque élément en PNG.</small></div>
+      <div className="intro-layer-list-heading"><strong>{mode === "main" ? "LOGO GLOBAL" : mode === "delayed" ? "CALQUES DIFFÉRÉS" : "CALQUES PNG TRANSPARENTS"}</strong><small>Le fond reste indépendant. Importez chaque élément en PNG.</small></div>
       <div className="intro-background-row">
         <div className="intro-layer-thumb background-thumb">{background ? <Image src={assetUrl(background) || ""} alt="Miniature du fond" width={144} height={81} unoptimized /> : <span>FOND 16:9</span>}</div>
-        <div className="intro-layer-info"><strong>Image de fond</strong><small>{backgroundIsFallback ? "Fond global du quiz · utilisé en l’absence d’un fond d’introduction dédié" : background ? "Fond principal de l’introduction" : "Fond principal · facultatif pour la composition"}</small></div>
-        <label className="upload-button">{busy === "introduction-image" ? "Import…" : background ? "Remplacer" : "Importer le fond"}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={Boolean(busy)} onChange={(event) => { const file = event.target.files?.[0]; if (file) onUploadBackground(file); event.currentTarget.value = ""; }} /></label>
+        <div className="intro-layer-info"><strong>{mode === "main" ? "Fond global" : mode === "delayed" ? "Nouveau fond" : "Image de fond"}</strong><small>{mode === "main" ? "Fond partagé par les questions et les thèmes" : mode === "delayed" ? "Fond réservé à la scène suivante" : backgroundIsFallback ? "Fond global du quiz · utilisé en l’absence d’un fond d’introduction dédié" : background ? "Fond principal de l’introduction" : "Fond principal · facultatif pour la composition"}</small></div>
+        <label className="upload-button">{busy === backgroundBusyKey ? "Import…" : background ? "Remplacer" : "Importer le fond"}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={Boolean(busy)} onChange={(event) => { const file = event.target.files?.[0]; if (file) onUploadBackground(file); event.currentTarget.value = ""; }} /></label>
         {background && !backgroundIsFallback && <button type="button" className="text-button" onClick={onRemoveBackground}>Supprimer</button>}
       </div>
       {orderedLayers.map(({ id, label, config }) => <div className={`intro-layer-row ${activeSelection.includes(id) ? "chosen" : ""}`} key={id}>
@@ -268,7 +285,7 @@ export function IntroductionEditor({
         </button>
         <div className="intro-layer-info"><strong>{label}</strong><small>{config.image ? `${Math.round(config.width)} × ${Math.round(config.width * (aspectByLayer[id] ?? 1))} px · calque ${config.zIndex}` : "PNG transparent · non importé"}</small></div>
         <div className="intro-layer-actions">
-          <label className="upload-button">{busy === `introduction-layer-${id}` ? "Import…" : config.image ? "Remplacer" : "Importer PNG"}<input type="file" accept="image/png" disabled={Boolean(busy)} onChange={(event) => { const file = event.target.files?.[0]; if (file) onUploadLayer(id, file); event.currentTarget.value = ""; }} /></label>
+          <label className="upload-button">{busy === layerBusyKey(id) ? "Import…" : config.image ? "Remplacer" : "Importer PNG"}<input type="file" accept={mode === "main" ? "image/png,image/jpeg,image/webp" : "image/png"} disabled={Boolean(busy)} onChange={(event) => { const file = event.target.files?.[0]; if (file) onUploadLayer(id, file); event.currentTarget.value = ""; }} /></label>
           {config.image && <>
             <button type="button" className="text-button" onClick={() => updateLayer(id, { image: null })}>Supprimer</button>
             <label className="intro-layer-visible"><input type="checkbox" checked={config.visible} onChange={(event) => updateLayer(id, { visible: event.target.checked })} /> Visible</label>

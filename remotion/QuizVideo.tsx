@@ -67,8 +67,8 @@ const Backdrop: React.FC<{ image: string | null; opacity?: number; scale?: numbe
   </div>
 );
 
-const Logo: React.FC<{ source: string | null; opacity?: number }> = ({ source, opacity = 1 }) => (
-  source ? <div style={{ position: "absolute", zIndex: 20, top: 52, left: 64, opacity }}><Img src={toPublicUrl(source)} style={{ maxWidth: 210, maxHeight: 78, objectFit: "contain", objectPosition: "left center" }} /></div> : null
+const Logo: React.FC<{ source: string | null; layer: QuizVideoProps["project"]["decorLogoLayer"] }> = ({ source, layer }) => (
+  source && layer.visible ? <div style={{ position: "absolute", zIndex: layer.zIndex, top: layer.y, left: layer.x, width: layer.width }}><Img src={toPublicUrl(source)} style={{ display: "block", width: "100%", height: "auto", objectFit: "contain", objectPosition: "left center" }} /></div> : null
 );
 
 const Illustration: React.FC<{ image: string | null }> = ({ image }) => {
@@ -474,7 +474,7 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
           : null
       )}
       {!isConclusion && isHourglassTransitionVariation && <Timer frame={questionFrames} duration={questionFrames} displaySeconds={false} transitionPulse={transitionProgress} />}
-      {!isOpeningTheme && !isConclusion && <Logo source={project.logo} />}
+      {!isOpeningTheme && !isConclusion && <Logo source={project.logo} layer={project.decorLogoLayer} />}
       {!isConclusion && hasQuestionStarted && <div style={{ position: "absolute", zIndex: 20, bottom: 72, left: 64, color: "#e4c574", fontSize: 34, fontWeight: 700, letterSpacing: 5, lineHeight: 1, textShadow: "0 2px 10px #000" }}>{String(questionNumber).padStart(2, "0")} / {String(project.questions.length).padStart(2, "0")}</div>}
       {outroFrames > 0 && frame >= conclusionStartFrame && <ConclusionComposition background={project.conclusionBackgroundImage} images={[{ source: project.conclusionImage, layer: project.conclusionLayer }, { source: project.conclusionImage2, layer: project.conclusionLayer2 }, { source: project.conclusionImage3, layer: project.conclusionLayer3 }]} frame={conclusionLocalFrame} durationFrames={outroFrames} opacity={interpolate(conclusionLocalFrame, [0, conclusionFadeFrames], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) })} />}
     </div>

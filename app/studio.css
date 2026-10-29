@@ -326,6 +326,10 @@
 .intro-image-actions small { color: #888679; font-size: 8px; line-height: 1.5; }
 .intro-image-actions > div { display: flex; align-items: center; gap: 12px; }
 .intro-composer { display: grid; gap: 10px; margin-top: 14px; }
+.intro-delayed-scene { display: grid; gap: 8px; margin-top: 20px; padding: 16px 12px 12px; border: 1px solid #5d5134; background: linear-gradient(145deg, #111812, #141710); }
+.intro-delayed-scene > .panel-heading { margin-bottom: 0; }
+.intro-delayed-scene > .panel-heading h3 { margin: 0; color: #ead7a0; font: inherit; font-size: 12px; }
+.intro-delayed-scene .intro-composer { margin-top: 4px; }
 .intro-editor-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .intro-editor-heading > div:first-child, .intro-layer-list-heading { display: grid; gap: 4px; }
 .intro-editor-heading strong, .intro-layer-list-heading strong { color: #d5c28f; font-size: 8px; letter-spacing: .08em; }

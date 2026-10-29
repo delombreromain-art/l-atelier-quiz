@@ -35,6 +35,7 @@ export type IntroductionLayer = {
   visible: boolean;
 };
 export type IntroductionLayers = Record<IntroductionLayerId, IntroductionLayer>;
+export type IntroductionDelayedScene = { background: string | null; logo: IntroductionLayer; questionsPanel: IntroductionLayer };
 export type ConclusionLayer = { x: number; y: number; width: number };
 export const CONCLUSION_LAYER_DEFAULTS: ConclusionLayer = { x: 480, y: 240, width: 960 };
 export const CONCLUSION_LAYER_2_DEFAULTS: ConclusionLayer = { x: 1240, y: 380, width: 500 };
@@ -49,6 +50,12 @@ export const INTRODUCTION_LAYER_DEFAULTS: IntroductionLayers = {
   cinema: { image: null, x: 1205, y: 750, width: 310, zIndex: 6, visible: true },
   hourglass: { image: null, x: 1530, y: 370, width: 270, zIndex: 7, visible: true },
 };
+export const INTRODUCTION_DELAYED_SCENE_DEFAULTS: IntroductionDelayedScene = {
+  background: null,
+  logo: { image: null, x: 64, y: 52, width: 210, zIndex: 1, visible: true },
+  questionsPanel: { image: null, x: 440, y: 340, width: 1040, zIndex: 2, visible: true },
+};
+export const DECOR_LOGO_LAYER_DEFAULT: IntroductionLayer = { image: null, x: 64, y: 52, width: 210, zIndex: 20, visible: true };
 
 export type QuizQuestion = {
   id: string;
@@ -105,6 +112,7 @@ export type QuizProject = {
   introductionText: string;
   introductionImage: string | null;
   introductionLayers: IntroductionLayers;
+  introductionDelayedScene: IntroductionDelayedScene;
   introductionDurationSeconds: number;
   introductionAudio: string | null;
   introductionAudioDuration: number | null;
@@ -152,6 +160,7 @@ export type QuizProject = {
   answerSoundVolume: number;
   themeImage: string | null;
   logo: string | null;
+  decorLogoLayer: IntroductionLayer;
   voice: VoiceId;
   themeTitle: string;
   speechRate: number;
@@ -287,6 +296,7 @@ export const defaultProject: QuizProject = {
   introductionText: "",
   introductionImage: null,
   introductionLayers: INTRODUCTION_LAYER_DEFAULTS,
+  introductionDelayedScene: INTRODUCTION_DELAYED_SCENE_DEFAULTS,
   introductionDurationSeconds: DEFAULT_INTRODUCTION_SECONDS,
   introductionAudio: null,
   introductionAudioDuration: null,
@@ -334,6 +344,7 @@ export const defaultProject: QuizProject = {
   answerSoundVolume: 35,
   themeImage: null,
   logo: null,
+  decorLogoLayer: DECOR_LOGO_LAYER_DEFAULT,
   voice: "fr_FR-siwis-medium",
   themeTitle: "",
   speechRate: 100,
@@ -568,6 +579,42 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
       visible: raw.visible !== false,
     }];
   })) as IntroductionLayers;
+  const delayedSceneInput = value.introductionDelayedScene && typeof value.introductionDelayedScene === "object"
+    ? value.introductionDelayedScene as Partial<IntroductionDelayedScene>
+    : {};
+  const delayedPanelInput = delayedSceneInput.questionsPanel && typeof delayedSceneInput.questionsPanel === "object"
+    ? delayedSceneInput.questionsPanel as Partial<IntroductionLayer>
+    : {};
+  const delayedPanelDefaults = INTRODUCTION_DELAYED_SCENE_DEFAULTS.questionsPanel;
+  const delayedLogoInput = delayedSceneInput.logo && typeof delayedSceneInput.logo === "object"
+    ? delayedSceneInput.logo as Partial<IntroductionLayer>
+    : {};
+  const delayedLogoDefaults = INTRODUCTION_DELAYED_SCENE_DEFAULTS.logo;
+  const delayedLogoWidth = typeof delayedLogoInput.width === "number" && Number.isFinite(delayedLogoInput.width)
+    ? Math.min(1920, Math.max(40, delayedLogoInput.width))
+    : delayedLogoDefaults.width;
+  const delayedPanelWidth = typeof delayedPanelInput.width === "number" && Number.isFinite(delayedPanelInput.width)
+    ? Math.min(1920, Math.max(40, delayedPanelInput.width))
+    : delayedPanelDefaults.width;
+  const introductionDelayedScene: IntroductionDelayedScene = {
+    background: typeof delayedSceneInput.background === "string" ? delayedSceneInput.background : null,
+    logo: {
+      image: typeof delayedLogoInput.image === "string" ? delayedLogoInput.image : null,
+      x: Math.min(1920 - delayedLogoWidth, Math.max(0, typeof delayedLogoInput.x === "number" && Number.isFinite(delayedLogoInput.x) ? delayedLogoInput.x : delayedLogoDefaults.x)),
+      y: Math.min(1080, Math.max(0, typeof delayedLogoInput.y === "number" && Number.isFinite(delayedLogoInput.y) ? delayedLogoInput.y : delayedLogoDefaults.y)),
+      width: delayedLogoWidth,
+      zIndex: typeof delayedLogoInput.zIndex === "number" && Number.isFinite(delayedLogoInput.zIndex) ? Math.min(100, Math.max(1, delayedLogoInput.zIndex)) : delayedLogoDefaults.zIndex,
+      visible: delayedLogoInput.visible !== false,
+    },
+    questionsPanel: {
+      image: typeof delayedPanelInput.image === "string" ? delayedPanelInput.image : null,
+      x: Math.min(1920 - delayedPanelWidth, Math.max(0, typeof delayedPanelInput.x === "number" && Number.isFinite(delayedPanelInput.x) ? delayedPanelInput.x : delayedPanelDefaults.x)),
+      y: Math.min(1080, Math.max(0, typeof delayedPanelInput.y === "number" && Number.isFinite(delayedPanelInput.y) ? delayedPanelInput.y : delayedPanelDefaults.y)),
+      width: delayedPanelWidth,
+      zIndex: typeof delayedPanelInput.zIndex === "number" && Number.isFinite(delayedPanelInput.zIndex) ? Math.min(100, Math.max(1, delayedPanelInput.zIndex)) : delayedPanelDefaults.zIndex,
+      visible: delayedPanelInput.visible !== false,
+    },
+  };
   const conclusionLayerInput = value.conclusionLayer && typeof value.conclusionLayer === "object"
     ? value.conclusionLayer as Partial<ConclusionLayer>
     : {};
@@ -601,6 +648,20 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
     y: Math.min(1080, Math.max(0, typeof conclusionLayer3Input.y === "number" && Number.isFinite(conclusionLayer3Input.y) ? conclusionLayer3Input.y : CONCLUSION_LAYER_3_DEFAULTS.y)),
     width: conclusionWidth3,
   };
+  const decorLogoInput = value.decorLogoLayer && typeof value.decorLogoLayer === "object"
+    ? value.decorLogoLayer as Partial<IntroductionLayer>
+    : {};
+  const decorLogoWidth = typeof decorLogoInput.width === "number" && Number.isFinite(decorLogoInput.width)
+    ? Math.min(1920, Math.max(40, decorLogoInput.width))
+    : DECOR_LOGO_LAYER_DEFAULT.width;
+  const decorLogoLayer: IntroductionLayer = {
+    image: null,
+    x: Math.min(1920 - decorLogoWidth, Math.max(0, typeof decorLogoInput.x === "number" && Number.isFinite(decorLogoInput.x) ? decorLogoInput.x : DECOR_LOGO_LAYER_DEFAULT.x)),
+    y: Math.min(1080, Math.max(0, typeof decorLogoInput.y === "number" && Number.isFinite(decorLogoInput.y) ? decorLogoInput.y : DECOR_LOGO_LAYER_DEFAULT.y)),
+    width: decorLogoWidth,
+    zIndex: typeof decorLogoInput.zIndex === "number" && Number.isFinite(decorLogoInput.zIndex) ? Math.min(100, Math.max(1, decorLogoInput.zIndex)) : DECOR_LOGO_LAYER_DEFAULT.zIndex,
+    visible: decorLogoInput.visible !== false,
+  };
 
   const archivedInput = Array.isArray(value.archivedQuestions) ? value.archivedQuestions.slice(0, MAX_QUESTION_LIBRARY) : [];
   const archivedQuestions = archivedInput.length
@@ -613,6 +674,7 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
     introductionText: typeof value.introductionText === "string" ? value.introductionText.slice(0, 1000) : "",
     introductionImage: typeof value.introductionImage === "string" ? value.introductionImage : null,
     introductionLayers,
+    introductionDelayedScene,
     introductionDurationSeconds: typeof value.introductionDurationSeconds === "number"
       ? Math.min(MAX_INTRODUCTION_SECONDS, Math.max(MIN_INTRODUCTION_SECONDS, value.introductionDurationSeconds))
       : DEFAULT_INTRODUCTION_SECONDS,
@@ -678,6 +740,7 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
       : defaultProject.answerSoundVolume,
     themeImage: typeof value.themeImage === "string" ? value.themeImage : null,
     logo: typeof value.logo === "string" ? value.logo : null,
+    decorLogoLayer,
     voice: value.voice,
     themeTitle: typeof value.themeTitle === "string" ? value.themeTitle.slice(0, 100) : "",
     speechRate: Math.min(120, Math.max(80, Number(value.speechRate) || 100)),

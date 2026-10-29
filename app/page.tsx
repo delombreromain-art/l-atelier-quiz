@@ -254,6 +254,15 @@ export default function Home() {
   };
 
   const updateIntroductionLayers = (introductionLayers: IntroductionLayers) => updateProject({ introductionLayers });
+  const uploadDelayedIntroductionLayer = (id: IntroductionLayerId, file: File) => {
+    if (id !== "logo" && id !== "questionsPanel") return;
+    void uploadImage(file, (image) => updateProject({
+      introductionDelayedScene: {
+        ...project.introductionDelayedScene,
+        [id]: { ...project.introductionDelayedScene[id], image },
+      },
+    }), `introduction-delayed-layer-${id}`);
+  };
 
   const uploadMusic = useCallback(async (file: File) => {
     setMediaBusy("background-music"); setFeedback("");
@@ -603,6 +612,20 @@ export default function Home() {
                   onUploadLayer={uploadIntroductionLayer}
                   onUpdateLayers={updateIntroductionLayers}
                 />
+                <div className="intro-delayed-scene">
+                  <div className="panel-heading"><div><span className="panel-step">↗</span><div><h3>Scène spéciale · apparition différée</h3><p>Préparez séparément son fond et le panneau 60 questions. Le réglage du délai viendra ensuite.</p></div></div></div>
+                  <IntroductionEditor
+                    mode="delayed"
+                    background={project.introductionDelayedScene.background}
+                    backgroundIsFallback={false}
+                    layers={{ ...project.introductionLayers, logo: project.introductionDelayedScene.logo, questionsPanel: project.introductionDelayedScene.questionsPanel }}
+                    busy={mediaBusy}
+                    onUploadBackground={(file) => void uploadImage(file, (background) => updateProject({ introductionDelayedScene: { ...project.introductionDelayedScene, background } }), "introduction-delayed-image")}
+                    onRemoveBackground={() => updateProject({ introductionDelayedScene: { ...project.introductionDelayedScene, background: null } })}
+                    onUploadLayer={uploadDelayedIntroductionLayer}
+                    onUpdateLayers={(next) => updateProject({ introductionDelayedScene: { ...project.introductionDelayedScene, logo: next.logo, questionsPanel: next.questionsPanel } })}
+                  />
+                </div>
                 <div className="music-field conclusion-music-field" id="musique-introduction">
                   <div className="music-heading"><div><strong>MUSIQUE D’INTRODUCTION</strong><small>{project.introductionMusic ? "La piste joue une fois, puis laisse place à la musique du thème." : "Sans piste dédiée, la musique du thème joue dès le début."}</small></div><label className="upload-button">{mediaBusy === "introduction-music" ? "Import…" : project.introductionMusic ? "Remplacer la musique" : "Importer une musique"}<input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/wave,audio/x-wav,audio/mp4,audio/x-m4a,audio/aac,audio/ogg,audio/webm,.mp3,.wav,.m4a,.aac,.ogg,.webm" disabled={Boolean(mediaBusy)} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadIntroductionMusic(file); event.currentTarget.value = ""; }} /></label>{project.introductionMusic && <button className="text-button" onClick={() => updateProject({ introductionMusic: null, introductionMusicDuration: null })}>Retirer</button>}</div>
                   {project.introductionMusic && <><div className="conclusion-music-preview-row"><button type="button" className="countdown-preview-button" onClick={() => void previewIntroductionMusic()}>{introductionMusicPreviewPlaying ? "■ Arrêter l’écoute" : "▶ Écouter la musique"}</button><span>Le niveau de l’aperçu suit cette jauge.</span><audio ref={introductionMusicAudioRef} className="countdown-audio-source" preload="metadata" src={assetUrl(project.introductionMusic) || undefined} onLoadedMetadata={(event) => { const duration = event.currentTarget.duration; if (Number.isFinite(duration) && duration > 0 && project.introductionMusicDuration !== duration) updateProject({ introductionMusicDuration: duration }); }} onPlay={() => setIntroductionMusicPreviewPlaying(true)} onPause={() => setIntroductionMusicPreviewPlaying(false)} onEnded={() => setIntroductionMusicPreviewPlaying(false)} aria-label="Aperçu de la musique d’introduction" /></div><Slider label="Volume de la musique d’introduction" value={project.introductionMusicVolume} min={0} max={100} unit=" %" onChange={updateIntroductionMusicVolume} /></>}
@@ -618,10 +641,17 @@ export default function Home() {
                   <div className="theme-art-preview">{project.themeImage ? <Image src={assetUrl(project.themeImage) || ""} alt="Image du thème d’ouverture" width={360} height={220} unoptimized /> : <span>IMAGE DU THÈME<br />CARTE DE TITRE</span>}</div>
                   <div className="theme-art-controls"><div><strong>Image du thème d’ouverture</strong><small>Illustration affichée avec le titre avant la question 1.</small></div><label className="upload-button">{mediaBusy === "opening-theme-image" ? "Import…" : project.themeImage ? "Remplacer l’image" : "Ajouter une image"}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={Boolean(mediaBusy)} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(file, (themeImage) => updateProject({ themeImage }), "opening-theme-image"); event.currentTarget.value = ""; }} /></label>{project.themeImage && <button className="text-button" onClick={() => updateProject({ themeImage: null })}>Retirer</button>}</div>
                 </div>
-                <div className="decor-grid">
-                  <div className="decor-field"><div className="decor-preview background-preview">{project.background ? <Image src={assetUrl(project.background) || ""} alt="Aperçu du fond global" width={1200} height={675} unoptimized /> : <span className="empty-state"><b>16:9</b>Importez le décor de votre bibliothèque</span>}</div><div className="decor-controls"><div><strong>Fond global · tous les thèmes et questions</strong><small>{project.background ? "Importé une fois · conservé partout" : "PNG, JPG ou WebP · jusqu’à 50 Mo"}</small></div><label className="upload-button">{mediaBusy === "background" ? "Import…" : project.background ? "Remplacer" : "Importer"}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={Boolean(mediaBusy)} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(file, (background) => updateProject({ background }), "background"); event.currentTarget.value = ""; }} /></label>{project.background && <button className="text-button" onClick={() => updateProject({ background: null })}>Retirer</button>}</div></div>
-                  <div className="decor-field logo-field"><div className="decor-preview logo-preview">{project.logo ? <Image src={assetUrl(project.logo) || ""} alt="Logo original importé" width={800} height={400} unoptimized /> : <span className="empty-state"><b>LOGO</b>Import facultatif</span>}</div><div className="decor-controls"><div><strong>Logo original</strong><small>Ajouté en calque indépendant</small></div><label className="upload-button">{mediaBusy === "logo" ? "Import…" : project.logo ? "Remplacer" : "Importer"}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={Boolean(mediaBusy)} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(file, (logo) => updateProject({ logo }), "logo"); event.currentTarget.value = ""; }} /></label>{project.logo && <button className="text-button" onClick={() => updateProject({ logo: null })}>Retirer</button>}</div></div>
-                </div>
+                <IntroductionEditor
+                  mode="main"
+                  background={project.background}
+                  backgroundIsFallback={false}
+                  layers={{ ...project.introductionLayers, logo: { ...project.decorLogoLayer, image: project.logo } }}
+                  busy={mediaBusy}
+                  onUploadBackground={(file) => void uploadImage(file, (background) => updateProject({ background }), "background")}
+                  onRemoveBackground={() => updateProject({ background: null })}
+                  onUploadLayer={(id, file) => void uploadImage(file, (logo) => updateProject({ logo }), "logo")}
+                  onUpdateLayers={(next) => updateProject({ logo: next.logo.image, decorLogoLayer: next.logo })}
+                />
                 <div className="music-field" id="musique-theme">
                   <div className="music-heading"><div><strong>MUSIQUE DE FOND · TOUT LE QUIZ</strong><small>La musique baisse pendant les voix IA ; elle reste au volume réglé pendant les prises micro.</small></div><label className="upload-button">{mediaBusy === "background-music" ? "Import…" : project.backgroundMusic ? "Remplacer la musique" : "Importer une musique"}<input type="file" accept="audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/aac,audio/ogg,audio/webm,.mp3,.wav,.m4a,.aac,.ogg,.webm" disabled={Boolean(mediaBusy)} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadMusic(file); event.currentTarget.value = ""; }} /></label>{project.backgroundMusic && <button className="text-button" onClick={() => updateProject({ backgroundMusic: null })}>Retirer</button>}</div>
                   {project.backgroundMusic && <div className="music-controls"><audio controls preload="metadata" src={assetUrl(project.backgroundMusic) || undefined} /><Slider label="Volume de la musique" value={project.musicVolume} min={0} max={100} unit=" %" onChange={(musicVolume) => updateProject({ musicVolume })} /></div>}
