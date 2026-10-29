@@ -118,6 +118,15 @@ export default function Home() {
   useEffect(() => { fetch("/api/projects", { cache: "no-store" }).then((r) => r.json()).then((rows) => setProjectOptions(rows)).catch(() => undefined); }, []);
 
   useEffect(() => {
+    let canceled = false;
+    fetch("/api/render", { cache: "no-store" })
+      .then(async (response) => response.ok ? response.json() as Promise<RenderStatus | null> : null)
+      .then((job) => { if (!canceled && job?.id) setRenderStatus(job); })
+      .catch(() => undefined);
+    return () => { canceled = true; };
+  }, []);
+
+  useEffect(() => {
     if (!loaded) return;
     setSaveState("saving");
     const timeout = window.setTimeout(async () => {

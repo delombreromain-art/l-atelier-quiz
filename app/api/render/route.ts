@@ -143,3 +143,15 @@ export async function POST(request: Request) {
   });
   return NextResponse.json({ id: job.id }, { headers: { "Cache-Control": "no-store" } });
 }
+
+export async function GET() {
+  const job = [...renderJobs.values()].sort((left, right) => right.startedAt - left.startedAt)[0];
+  return NextResponse.json(job ? {
+    id: job.id,
+    stage: job.stage,
+    progress: job.progress,
+    message: job.message,
+    error: job.error,
+    downloadUrl: job.stage === "completed" ? `/api/render/${job.id}/file` : undefined,
+  } : null, { headers: { "Cache-Control": "no-store" } });
+}
