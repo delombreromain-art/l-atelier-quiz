@@ -19,6 +19,7 @@ import {
   MIN_INTRODUCTION_SECONDS,
   MIN_CONCLUSION_SECONDS,
   isVoiceId,
+  isQuestionReadyForRender,
   questionDurationFrames,
   narrationAudio,
   questionVideoDuration,
@@ -521,7 +522,7 @@ export default function Home() {
   const startRender = async (scope: "all" | "question", index = 0) => {
     const selected = scope === "all" ? activeQuestions : [activeQuestions[index]];
     if (!activeQuestions.length) { setFeedback("Activez au moins une question dans la bibliotheque."); return; }
-    if (selected.some((question) => !question?.prompt.trim() || !question?.answer.trim())) { setFeedback(scope === "all" ? "Complétez toutes les questions et leurs réponses avant l’export." : `Complétez la question ${index + 1} et sa réponse avant l’export.`); return; }
+    if (selected.some((question) => !isQuestionReadyForRender(question))) { setFeedback(scope === "all" ? "Complétez toutes les questions et leurs réponses avant l’export." : `Complétez la question ${index + 1} et sa réponse avant l’export.`); return; }
     if (!introVoiceReady) { setFeedback("Choisissez une voix disponible pour l’introduction, ou enregistrez-la."); navigate("introduction"); return; }
     const conclusionVoiceReady = !project.conclusionText.trim() || Boolean(conclusionNarration(project));
     if (scope === "all" && !conclusionVoiceReady) { setFeedback("Enregistrez la narration ou générez la voix IA de conclusion."); navigate("conclusion"); return; }

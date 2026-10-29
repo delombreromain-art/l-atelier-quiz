@@ -4,7 +4,7 @@ import path from "node:path";
 import { NextResponse } from "next/server";
 import { bundle } from "@remotion/bundler";
 import { renderMedia, selectComposition } from "@remotion/renderer";
-import { conclusionDurationFrames, introductionDurationFrames, introductionNarration, conclusionNarration, narrationAudio, normalizeProject, questionVideoDuration, slugify, type QuizVideoProps } from "@/lib/quiz";
+import { conclusionDurationFrames, introductionDurationFrames, introductionNarration, conclusionNarration, isQuestionReadyForRender, narrationAudio, normalizeProject, questionVideoDuration, slugify, type QuizVideoProps } from "@/lib/quiz";
 import { renderJobs, type RenderJob } from "@/lib/render-jobs";
 import { ensureProjectFolders, saveProject, exportsDirectory } from "@/lib/storage";
 
@@ -103,7 +103,7 @@ export async function POST(request: Request) {
   if (!project) return NextResponse.json({ error: "Le projet est invalide." }, { status: 400 });
   const activeQuestions = project.questions.filter((question) => question.enabled !== false);
   if (activeQuestions.length === 0) return NextResponse.json({ error: "Activez au moins une question pour creer la video." }, { status: 400 });
-  if (body?.scope !== "question" && activeQuestions.some((question) => !question.prompt.trim() || !question.answer.trim())) {
+  if (body?.scope !== "question" && activeQuestions.some((question) => !isQuestionReadyForRender(question))) {
     return NextResponse.json({ error: "Complétez toutes les questions et leurs réponses avant le rendu." }, { status: 400 });
   }
   const scope = body?.scope === "question" ? "question" : "all";
@@ -112,7 +112,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Question à exporter inconnue." }, { status: 400 });
   }
   const selected = scope === "all" ? activeQuestions : [activeQuestions[questionIndex]];
-  if (selected.some((question) => !question.prompt.trim() || !question.answer.trim())) {
+  if (selected.some((question) => !isQuestionReadyForRender(question))) {
     return NextResponse.json({ error: scope === "all" ? "Complétez toutes les questions et leurs réponses avant le rendu." : `Complétez la question ${questionIndex + 1} et sa réponse avant le rendu.` }, { status: 400 });
   }
   if (project.introductionText.trim() && !introductionNarration(project)) {

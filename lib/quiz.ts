@@ -393,6 +393,9 @@ export const questionDurationFrames = (question: QuizQuestion, voice?: VoiceId, 
   return Math.max(base, Math.ceil((narrationAudio(question, "question", voice, rate)?.duration ?? 0) * FPS));
 };
 
+export const isQuestionReadyForRender = (question: QuizQuestion | undefined) =>
+  Boolean(question && (question.prompt.trim() || (question.isRiddle && question.image)) && question.answer.trim());
+
 export const answerDisplayFrames = (question: QuizQuestion, voice?: VoiceId, rate?: number) => {
   const answerDuration = narrationAudio(question, "answer", voice, rate)?.duration ?? 0;
   return Math.max(ANSWER_FRAMES, Math.ceil(answerDuration * FPS));
