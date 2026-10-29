@@ -389,7 +389,7 @@ export const narrationAudio = (question: QuizQuestion, part: "question" | "answe
 
 export const questionDurationFrames = (question: QuizQuestion, voice?: VoiceId, rate?: number) => {
   const visibleTextLength = question.title.length + question.prompt.length;
-  const base = (question.force15Seconds || visibleTextLength > LONG_QUESTION_CHARACTER_LIMIT ? LONG_QUESTION_SECONDS : DEFAULT_QUESTION_SECONDS) * FPS;
+  const base = (question.isRiddle || question.force15Seconds || visibleTextLength > LONG_QUESTION_CHARACTER_LIMIT ? LONG_QUESTION_SECONDS : DEFAULT_QUESTION_SECONDS) * FPS;
   return Math.max(base, Math.ceil((narrationAudio(question, "question", voice, rate)?.duration ?? 0) * FPS));
 };
 
