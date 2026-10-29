@@ -526,9 +526,10 @@ export default function Home() {
     setArchiveBusy(true);
     try {
       const response = await fetch("/api/archive", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ project }) });
-      const result = await response.json() as { folder?: string; questions?: number; images?: number; assets?: number; error?: string };
+      const result = await response.json() as { folder?: string; questions?: number; images?: number; assets?: number; omittedInactiveAudio?: number; error?: string };
       if (!response.ok || !result.folder) throw new Error(result.error || "La copie complète n’a pas pu être créée.");
-      setFeedback(`Copie complète créée : C:\\Users\\Romain DELOMBRE\\Desktop\\l'atelier quiz fichiers principaux\\Archive Quiz\\${result.folder} — ${result.questions} questions, leur fichier questions.csv et ${result.images} images (${result.assets} médias au total).`);
+      const omittedAudio = result.omittedInactiveAudio ? ` ${result.omittedInactiveAudio} ancienne(s) piste(s) IA inactive(s) et introuvable(s) ignorée(s).` : "";
+      setFeedback(`Copie complète créée : C:\\Users\\Romain DELOMBRE\\Desktop\\l'atelier quiz fichiers principaux\\Archive Quiz\\${result.folder} — ${result.questions} questions, leur fichier questions.csv et ${result.images} images (${result.assets} médias référencés).${omittedAudio}`);
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : "La copie complète n’a pas pu être créée.");
     } finally {

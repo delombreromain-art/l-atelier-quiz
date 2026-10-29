@@ -52,6 +52,9 @@ const answerTextFontSize = (answer: string) => {
   return 18;
 };
 
+const commentaryTextFontSize = (commentary: string) =>
+  Math.max(22, Math.min(34, Math.round(34 * Math.sqrt(260 / Math.max(260, commentary.length)))));
+
 const Backdrop: React.FC<{ image: string | null; opacity?: number; scale?: number }> = ({ image, opacity = 1, scale = 1 }) => (
   <div style={{ position: "absolute", inset: 0, background: "#10201a", opacity }}>
     {image ? (
@@ -104,8 +107,9 @@ const QuestionAnswerCard: React.FC<{ question: QuizQuestion; number: number; fra
           </div>
         )}
         <div style={{ gridArea: "1 / 1", width: "100%", display: "grid", placeItems: "center", opacity: answerAlpha }}>
-          <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", transform: `translateY(${answerOffset}px)`, maxWidth: "100%" }}>
+          <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: question.answerCommentary.trim() ? 28 : 0, transform: `translateY(${answerOffset}px)`, maxWidth: "100%" }}>
             <div style={{ color: "#f1d58d", fontFamily: "Georgia, 'Times New Roman', serif", fontSize: answerFontSize, lineHeight: 1.16, textShadow: `0 0 ${glow}px #e1b95a, 0 3px 28px #000d`, maxWidth: 1200, textWrap: "balance", overflowWrap: "anywhere" }}>{question.answer}</div>
+            {question.answerCommentary.trim() && <div style={{ boxSizing: "border-box", width: 1180, maxWidth: "100%", padding: "22px 30px", border: "1px solid #d1b36a99", background: "linear-gradient(135deg, #0b120fdd, #1c251ddd)", boxShadow: "0 12px 38px #0007, inset 0 0 28px #d1b36a0d", color: "#fff8e9", fontFamily: "Georgia, 'Times New Roman', serif", fontSize: commentaryTextFontSize(question.answerCommentary), lineHeight: 1.35, textShadow: "0 2px 12px #000b", textWrap: "pretty", overflowWrap: "anywhere" }}>{question.answerCommentary}</div>}
           </div>
         </div>
       </div>
@@ -462,7 +466,6 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
         </>
         : isConclusion ? null : <Backdrop image={project.background} />}
       {!isConclusion && hasQuestionStarted && localFrame < questionFrames && !question.isRiddle && <Illustration image={question.image} />}
-      {!isConclusion && hasQuestionStarted && localFrame >= questionFrames && localFrame < questionFrames + answerFrames + finalAnswerHoldFrames && <Illustration image={question.answerImage || (question.keepImageOnAnswer ? question.image : null)} />}
       {!isConclusion && hasQuestionStarted && localFrame < questionFrames + answerFrames + finalAnswerHoldFrames && <QuestionAnswerCard question={question} number={questionNumber} frame={localFrame} questionFrames={questionFrames} answerFrames={answerFrames} />}
       {!isConclusion && hasQuestionStarted && localFrame < questionFrames && <Timer frame={localFrame} duration={questionFrames} />}
       {localFrame >= transitionStart && !isLast && nextQuestion && (

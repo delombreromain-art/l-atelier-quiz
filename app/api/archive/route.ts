@@ -29,6 +29,24 @@ function collectAssets(value: unknown, assets = new Set<string>()): Set<string> 
   return assets;
 }
 
+function collectQuestionAudioReferences(value: unknown, active = new Set<string>(), inactive = new Set<string>()) {
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectQuestionAudioReferences(item, active, inactive));
+  } else if (value && typeof value === "object") {
+    const question = value as Record<string, unknown>;
+    for (const part of ["question", "answer", "commentary"] as const) {
+      const asset = question[`${part}Audio`];
+      const source = question[`${part}VoiceSource`];
+      if (typeof asset !== "string") continue;
+      const safePath = safeAssetPath(asset);
+      if (!safePath) continue;
+      (source === "recording" ? inactive : active).add(safePath);
+    }
+    Object.values(question).forEach((item) => collectQuestionAudioReferences(item, active, inactive));
+  }
+  return { active, inactive };
+}
+
 function safeFolderName(title: string) {
   return title.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 70) || "quiz";
 }
@@ -52,6 +70,9 @@ export async function POST(request: Request) {
   const archiveDirectory = path.join(ARCHIVE_ROOT, folderName);
   const publicDirectory = path.join(process.cwd(), "public");
   const assets = [...collectAssets(project)].sort();
+  const questionAudio = collectQuestionAudioReferences(project);
+  const inactiveQuestionAudio = new Set([...questionAudio.inactive].filter((asset) => !questionAudio.active.has(asset)));
+  let omittedInactiveAudio = 0;
 
   try {
     await mkdir(ARCHIVE_ROOT, { recursive: true });
@@ -63,7 +84,13 @@ export async function POST(request: Request) {
       if (!source.startsWith(publicRoot)) throw new Error("Un chemin de média du projet est invalide.");
       const destination = path.join(archiveDirectory, ...asset.split("/"));
       await mkdir(path.dirname(destination), { recursive: true });
-      await copyFile(source, destination);
+      try {
+        await copyFile(source, destination);
+      } catch (error) {
+        const missingAsset = error instanceof Error && "code" in error && error.code === "ENOENT";
+        if (!missingAsset || !inactiveQuestionAudio.has(asset)) throw error;
+        omittedInactiveAudio += 1;
+      }
     }
 
     const temporaryProjectPath = path.join(archiveDirectory, "project.json.tmp");
@@ -87,6 +114,7 @@ export async function POST(request: Request) {
       questions: project.questions.length + project.archivedQuestions.length,
       images: assets.filter((asset) => asset.startsWith("media/")).length,
       assets: assets.length,
+      omittedInactiveAudio,
     });
   } catch (error) {
     await rm(archiveDirectory, { recursive: true, force: true }).catch(() => undefined);
