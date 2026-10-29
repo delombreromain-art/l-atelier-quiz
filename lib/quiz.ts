@@ -40,7 +40,7 @@ export type IntroductionDelayedScene = {
   sound: string | null;
   logo: IntroductionLayer;
   questionsPanel: IntroductionLayer;
-  transition: { effect: "lightning" | "none"; enabled: boolean; startSeconds: number; durationFrames: number };
+  transition: { effect: "lightning" | "none"; enabled: boolean; startSeconds: number; durationFrames: number; soundVolume: number };
 };
 export type ConclusionLayer = { x: number; y: number; width: number };
 export const CONCLUSION_LAYER_DEFAULTS: ConclusionLayer = { x: 480, y: 240, width: 960 };
@@ -61,7 +61,7 @@ export const INTRODUCTION_DELAYED_SCENE_DEFAULTS: IntroductionDelayedScene = {
   sound: null,
   logo: { image: null, x: 64, y: 52, width: 210, zIndex: 1, visible: true },
   questionsPanel: { image: null, x: 440, y: 340, width: 1040, zIndex: 2, visible: true },
-  transition: { effect: "lightning", enabled: false, startSeconds: 8, durationFrames: 12 },
+  transition: { effect: "lightning", enabled: false, startSeconds: 8, durationFrames: 12, soundVolume: 100 },
 };
 export const DECOR_LOGO_LAYER_DEFAULT: IntroductionLayer = { image: null, x: 64, y: 52, width: 210, zIndex: 20, visible: true };
 
@@ -632,6 +632,9 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
       durationFrames: typeof delayedSceneInput.transition?.durationFrames === "number" && Number.isFinite(delayedSceneInput.transition.durationFrames)
         ? Math.min(90, Math.max(1, Math.round(delayedSceneInput.transition.durationFrames)))
         : INTRODUCTION_DELAYED_SCENE_DEFAULTS.transition.durationFrames,
+      soundVolume: typeof delayedSceneInput.transition?.soundVolume === "number" && Number.isFinite(delayedSceneInput.transition.soundVolume)
+        ? Math.min(100, Math.max(0, delayedSceneInput.transition.soundVolume))
+        : INTRODUCTION_DELAYED_SCENE_DEFAULTS.transition.soundVolume,
     },
   };
   const conclusionLayerInput = value.conclusionLayer && typeof value.conclusionLayer === "object"
