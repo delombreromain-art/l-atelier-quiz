@@ -53,7 +53,7 @@ const answerTextFontSize = (answer: string) => {
 };
 
 const commentaryTextFontSize = (commentary: string) =>
-  Math.max(22, Math.min(34, Math.round(34 * Math.sqrt(260 / Math.max(260, commentary.length)))));
+  Math.max(26, Math.min(44, Math.round(44 * Math.sqrt(280 / Math.max(280, commentary.length)))));
 
 const Backdrop: React.FC<{ image: string | null; opacity?: number; scale?: number }> = ({ image, opacity = 1, scale = 1 }) => (
   <div style={{ position: "absolute", inset: 0, background: "#10201a", opacity }}>
@@ -109,7 +109,7 @@ const QuestionAnswerCard: React.FC<{ question: QuizQuestion; number: number; fra
         <div style={{ gridArea: "1 / 1", width: "100%", display: "grid", placeItems: "center", opacity: answerAlpha }}>
           <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: question.answerCommentary.trim() ? 28 : 0, transform: `translateY(${answerOffset}px)`, maxWidth: "100%" }}>
             <div style={{ color: "#f1d58d", fontFamily: "Georgia, 'Times New Roman', serif", fontSize: answerFontSize, lineHeight: 1.16, textShadow: `0 0 ${glow}px #e1b95a, 0 3px 28px #000d`, maxWidth: 1200, textWrap: "balance", overflowWrap: "anywhere" }}>{question.answer}</div>
-            {question.answerCommentary.trim() && <div style={{ boxSizing: "border-box", width: 1180, maxWidth: "100%", padding: "22px 30px", border: "1px solid #d1b36a99", background: "linear-gradient(135deg, #0b120fdd, #1c251ddd)", boxShadow: "0 12px 38px #0007, inset 0 0 28px #d1b36a0d", color: "#fff8e9", fontFamily: "Georgia, 'Times New Roman', serif", fontSize: commentaryTextFontSize(question.answerCommentary), lineHeight: 1.35, textShadow: "0 2px 12px #000b", textWrap: "pretty", overflowWrap: "anywhere" }}>{question.answerCommentary}</div>}
+            {question.answerCommentary.trim() && <div style={{ maxWidth: 1180, color: "#fff8e9", fontFamily: "Georgia, 'Times New Roman', serif", fontSize: commentaryTextFontSize(question.answerCommentary), fontStyle: "italic", lineHeight: 1.3, textShadow: "0 2px 12px #000b", textWrap: "pretty", overflowWrap: "anywhere" }}>{question.answerCommentary}</div>}
           </div>
         </div>
       </div>
