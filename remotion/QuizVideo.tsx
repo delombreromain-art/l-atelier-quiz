@@ -266,12 +266,13 @@ const IntroductionComposition: React.FC<{
     cinema: { start: 5, duration: 1.2, scale: 0.92, rise: 10, light: true },
     hourglass: { start: 12, duration: 1, scale: 0.96, rise: 0, light: true, spinAt: 17, spinDuration: 1.6, shine: 19.6, shineDuration: 0.4 },
   };
-  const specialLayerAnimations: Partial<Record<keyof IntroductionLayers, { start: number; duration: number; scale: number; rise: number; light?: boolean }>> = {
+  const specialLayerAnimations: Partial<Record<keyof IntroductionLayers, { start: number; duration: number; scale: number; rise: number; light?: boolean; shine?: number; shineDuration?: number; spinAt?: number; spinDuration?: number }>> = {
     logo: { start: 0.08, duration: 0.25, scale: 0.92, rise: 0, light: true },
     questionsPanel: { start: 0.12, duration: 0.42, scale: 0.9, rise: 24, light: true },
+    hourglass: layerAnimations.hourglass,
   };
   const activeLayerEntries: [keyof IntroductionLayers, IntroductionLayer][] = specialSceneActive
-    ? [["logo", specialScene.logo], ["questionsPanel", specialScene.questionsPanel]]
+    ? [["logo", specialScene.logo], ["questionsPanel", specialScene.questionsPanel], ["hourglass", layers.hourglass]]
     : Object.entries(layers) as [keyof IntroductionLayers, IntroductionLayer][];
   const activeLayerAnimations = specialSceneActive ? specialLayerAnimations : layerAnimations;
   const activeBackground = specialSceneActive ? specialScene.background || background : background;
@@ -289,7 +290,7 @@ const IntroductionComposition: React.FC<{
         .map(([id, layer]) => {
           const animation = activeLayerAnimations[id]!;
           const stagger = specialSceneActive ? 0 : id === "history" ? 0 : id === "geography" ? 0.7 : id === "science" ? 1.4 : id === "cinema" ? 2.1 : 0;
-          const sceneOffset = specialSceneActive ? specialScene.transition.startSeconds : 0;
+          const sceneOffset = specialSceneActive && id !== "hourglass" ? specialScene.transition.startSeconds : 0;
           return <IntroductionLayerImage
             key={id}
             image={layer.image!}
