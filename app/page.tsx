@@ -263,6 +263,18 @@ export default function Home() {
       },
     }), `introduction-delayed-layer-${id}`);
   };
+  const uploadDelayedSceneSound = async (file: File) => {
+    setMediaBusy("introduction-delayed-sound"); setFeedback("");
+    try {
+      const body = new FormData(); body.set("file", file);
+      const response = await fetch("/api/music", { method: "POST", body });
+      const result = await response.json() as { path?: string; error?: string };
+      if (!response.ok || !result.path) throw new Error(result.error || "Import du son de la scène spéciale impossible.");
+      setProject((current) => ({ ...current, introductionDelayedScene: { ...current.introductionDelayedScene, sound: result.path! } }));
+      setFeedback(`${file.name} ajouté aux éléments de la scène spéciale.`);
+    } catch (error) { setFeedback(error instanceof Error ? error.message : "Import du son de la scène spéciale impossible."); }
+    finally { setMediaBusy(""); }
+  };
 
   const uploadMusic = useCallback(async (file: File) => {
     setMediaBusy("background-music"); setFeedback("");
@@ -625,6 +637,11 @@ export default function Home() {
                     onUploadLayer={uploadDelayedIntroductionLayer}
                     onUpdateLayers={(next) => updateProject({ introductionDelayedScene: { ...project.introductionDelayedScene, logo: next.logo, questionsPanel: next.questionsPanel } })}
                   />
+                  <div className="music-field" id="son-scene-speciale">
+                    <div className="music-heading"><div><strong>SON DE LA SCÈNE SPÉCIALE</strong><small>Importé et conservé pour le montage ultérieur.</small></div><label className="upload-button">{mediaBusy === "introduction-delayed-sound" ? "Import…" : project.introductionDelayedScene.sound ? "Remplacer le son" : "Ajouter un son"}<input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/wave,audio/x-wav,audio/mp4,audio/x-m4a,audio/aac,audio/ogg,audio/webm,.mp3,.wav,.m4a,.aac,.ogg,.webm" disabled={Boolean(mediaBusy)} onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void uploadDelayedSceneSound(file); event.currentTarget.value = ""; }} /></label>{project.introductionDelayedScene.sound && <button className="text-button" onClick={() => updateProject({ introductionDelayedScene: { ...project.introductionDelayedScene, sound: null } })}>Retirer</button>}</div>
+                    {project.introductionDelayedScene.sound && <audio className="intro-audio-preview" controls preload="metadata" src={assetUrl(project.introductionDelayedScene.sound) || undefined} aria-label="Écouter le son de la scène spéciale" />}
+                    <p>Tu pourras l’écouter ici ; son déclenchement dans la vidéo sera ajouté lors du montage de la scène.</p>
+                  </div>
                 </div>
                 <div className="music-field conclusion-music-field" id="musique-introduction">
                   <div className="music-heading"><div><strong>MUSIQUE D’INTRODUCTION</strong><small>{project.introductionMusic ? "La piste joue une fois, puis laisse place à la musique du thème." : "Sans piste dédiée, la musique du thème joue dès le début."}</small></div><label className="upload-button">{mediaBusy === "introduction-music" ? "Import…" : project.introductionMusic ? "Remplacer la musique" : "Importer une musique"}<input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/wave,audio/x-wav,audio/mp4,audio/x-m4a,audio/aac,audio/ogg,audio/webm,.mp3,.wav,.m4a,.aac,.ogg,.webm" disabled={Boolean(mediaBusy)} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadIntroductionMusic(file); event.currentTarget.value = ""; }} /></label>{project.introductionMusic && <button className="text-button" onClick={() => updateProject({ introductionMusic: null, introductionMusicDuration: null })}>Retirer</button>}</div>

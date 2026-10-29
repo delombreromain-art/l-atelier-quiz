@@ -35,7 +35,7 @@ export type IntroductionLayer = {
   visible: boolean;
 };
 export type IntroductionLayers = Record<IntroductionLayerId, IntroductionLayer>;
-export type IntroductionDelayedScene = { background: string | null; logo: IntroductionLayer; questionsPanel: IntroductionLayer };
+export type IntroductionDelayedScene = { background: string | null; sound: string | null; logo: IntroductionLayer; questionsPanel: IntroductionLayer };
 export type ConclusionLayer = { x: number; y: number; width: number };
 export const CONCLUSION_LAYER_DEFAULTS: ConclusionLayer = { x: 480, y: 240, width: 960 };
 export const CONCLUSION_LAYER_2_DEFAULTS: ConclusionLayer = { x: 1240, y: 380, width: 500 };
@@ -52,6 +52,7 @@ export const INTRODUCTION_LAYER_DEFAULTS: IntroductionLayers = {
 };
 export const INTRODUCTION_DELAYED_SCENE_DEFAULTS: IntroductionDelayedScene = {
   background: null,
+  sound: null,
   logo: { image: null, x: 64, y: 52, width: 210, zIndex: 1, visible: true },
   questionsPanel: { image: null, x: 440, y: 340, width: 1040, zIndex: 2, visible: true },
 };
@@ -598,6 +599,7 @@ export const normalizeProject = (input: unknown): QuizProject | null => {
     : delayedPanelDefaults.width;
   const introductionDelayedScene: IntroductionDelayedScene = {
     background: typeof delayedSceneInput.background === "string" ? delayedSceneInput.background : null,
+    sound: typeof delayedSceneInput.sound === "string" ? delayedSceneInput.sound : null,
     logo: {
       image: typeof delayedLogoInput.image === "string" ? delayedLogoInput.image : null,
       x: Math.min(1920 - delayedLogoWidth, Math.max(0, typeof delayedLogoInput.x === "number" && Number.isFinite(delayedLogoInput.x) ? delayedLogoInput.x : delayedLogoDefaults.x)),
