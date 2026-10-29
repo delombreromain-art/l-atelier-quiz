@@ -80,6 +80,27 @@ const Illustration: React.FC<{ image: string | null }> = ({ image }) => {
   );
 };
 
+// Prepared for the delayed Halloween scene. Keep it unmounted until that scene's transition is wired into the edit.
+export const SpecialSceneLightningTransition: React.FC<{ frame: number; durationFrames: number }> = ({ frame, durationFrames }) => {
+  if (frame < 0 || frame > durationFrames || durationFrames <= 0) return null;
+  const progress = frame / durationFrames;
+  const pulse = (center: number, width: number, strength: number) => Math.max(0, (1 - Math.abs(progress - center) / width) * strength);
+  const flash = Math.min(1, Math.max(pulse(0.08, 0.09, 1), pulse(0.31, 0.1, 0.92), pulse(0.56, 0.1, 0.78), pulse(0.8, 0.13, 0.32)));
+  return (
+    <div style={{ position: "absolute", zIndex: 100, inset: 0, overflow: "hidden", pointerEvents: "none" }}>
+      <div style={{ position: "absolute", inset: 0, background: `rgba(232, 246, 255, ${flash * 0.9})` }} />
+      <svg viewBox="0 0 1920 1080" preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: flash }}>
+        <g fill="none" strokeLinecap="round" strokeLinejoin="round" filter="drop-shadow(0 0 20px #a8e8ff) drop-shadow(0 0 46px #ffffff)">
+          <path d="M1035 -30 L972 180 L1052 225 L895 470 L1005 515 L808 810 L850 824 L694 1110" stroke="#f8fdff" strokeWidth="24" />
+          <path d="M1035 -30 L972 180 L1052 225 L895 470 L1005 515 L808 810 L850 824 L694 1110" stroke="#8ce3ff" strokeWidth="8" />
+          <path d="M973 181 L815 250 L855 292 L715 350 M896 469 L1090 402 L1050 365 L1205 282 M808 810 L630 740 L675 700 L528 636" stroke="#e8f8ff" strokeWidth="13" />
+          <path d="M1392 -40 L1320 175 L1390 220 L1245 438 L1300 478 L1167 682" stroke="#ffffff" strokeWidth="12" opacity=".9" />
+        </g>
+      </svg>
+    </div>
+  );
+};
+
 const QuestionAnswerCard: React.FC<{ question: QuizQuestion; number: number; frame: number; questionFrames: number; answerFrames: number }> = ({ question, number, frame, questionFrames, answerFrames }) => {
   const questionAlpha = frame < questionFrames ? interpolate(frame, [0, 22], [0, 1], { extrapolateRight: "clamp" }) : 0;
   const answerAlpha = interpolate(frame, [questionFrames, questionFrames + 12, questionFrames + answerFrames], [0, 1, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
