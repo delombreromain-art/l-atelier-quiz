@@ -625,7 +625,7 @@ export default function Home() {
                   onUpdateLayers={updateIntroductionLayers}
                 />
                 <div className="intro-delayed-scene">
-                  <div className="panel-heading"><div><span className="panel-step">↗</span><div><h3>Scène spéciale · apparition différée</h3><p>Préparez séparément son fond et le panneau 60 questions. Le réglage du délai viendra ensuite.</p></div></div></div>
+                  <div className="panel-heading"><div><span className="panel-step">↗</span><div><h3>Scène spéciale · apparition à 8 secondes</h3><p>Le fond, le logo, le panneau 60 questions et le son basculent après l’introduction avec un éclair.</p></div></div></div>
                   <IntroductionEditor
                     mode="delayed"
                     background={project.introductionDelayedScene.background}

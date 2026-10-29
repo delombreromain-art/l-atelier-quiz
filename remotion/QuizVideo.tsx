@@ -27,6 +27,7 @@ import {
   conclusionNarration,
   transitionFramesAfter,
   type ConclusionLayer,
+  type IntroductionLayer,
   type QuizQuestion,
   type IntroductionLayers,
   type QuizVideoProps,
@@ -80,12 +81,12 @@ const Illustration: React.FC<{ image: string | null }> = ({ image }) => {
   );
 };
 
-// Prepared for the delayed Halloween scene. Keep it unmounted until that scene's transition is wired into the edit.
+// Full-frame lightning flash for the transition into the delayed Halloween scene.
 export const SpecialSceneLightningTransition: React.FC<{ frame: number; durationFrames: number }> = ({ frame, durationFrames }) => {
   if (frame < 0 || frame > durationFrames || durationFrames <= 0) return null;
   const progress = frame / durationFrames;
   const pulse = (center: number, width: number, strength: number) => Math.max(0, (1 - Math.abs(progress - center) / width) * strength);
-  const flash = Math.min(1, Math.max(pulse(0.08, 0.09, 1), pulse(0.31, 0.1, 0.92), pulse(0.56, 0.1, 0.78), pulse(0.8, 0.13, 0.32)));
+  const flash = Math.min(1, Math.max(pulse(0, 0.08, 1), pulse(0.31, 0.1, 0.92), pulse(0.56, 0.1, 0.78), pulse(0.8, 0.13, 0.32)));
   return (
     <div style={{ position: "absolute", zIndex: 100, inset: 0, overflow: "hidden", pointerEvents: "none" }}>
       <div style={{ position: "absolute", inset: 0, background: `rgba(232, 246, 255, ${flash * 0.9})` }} />
@@ -225,10 +226,19 @@ const IntroductionLayerImage: React.FC<{
   );
 };
 
-const IntroductionComposition: React.FC<{ background: string | null; layers: IntroductionLayers; durationFrames: number }> = ({ background, layers, durationFrames }) => {
+const IntroductionComposition: React.FC<{
+  background: string | null;
+  layers: IntroductionLayers;
+  specialScene: QuizVideoProps["project"]["introductionDelayedScene"];
+  durationFrames: number;
+}> = ({ background, layers, specialScene, durationFrames }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const frames = (seconds: number) => Math.max(1, Math.round(seconds * fps));
+  const specialStartFrame = Math.round(specialScene.transition.startSeconds * fps);
+  const hasSpecialScene = Boolean(specialScene.background || specialScene.sound || specialScene.logo.image || specialScene.questionsPanel.image);
+  const specialSceneActive = specialScene.transition.enabled && hasSpecialScene && frame >= specialStartFrame;
+  const specialTransitionFrame = frame - specialStartFrame;
   const backgroundFadeFrames = frames(0.5);
   const finalFadeFrames = frames(0.6);
   const backgroundOpacity = interpolate(frame, [0, backgroundFadeFrames], [0, 1], {
@@ -236,7 +246,8 @@ const IntroductionComposition: React.FC<{ background: string | null; layers: Int
     extrapolateRight: "clamp",
     easing: Easing.inOut(Easing.sin),
   });
-  const backgroundZoom = interpolate(frame, [0, durationFrames], [1, 1.02], {
+  const backgroundFrame = specialSceneActive ? specialTransitionFrame : frame;
+  const backgroundZoom = interpolate(backgroundFrame, [0, specialSceneActive ? Math.max(1, durationFrames - specialStartFrame) : durationFrames], [1, 1.02], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
     easing: Easing.inOut(Easing.sin),
@@ -255,34 +266,46 @@ const IntroductionComposition: React.FC<{ background: string | null; layers: Int
     cinema: { start: 5, duration: 1.2, scale: 0.92, rise: 10, light: true },
     hourglass: { start: 12, duration: 1, scale: 0.96, rise: 0, light: true, spinAt: 17, spinDuration: 1.6, shine: 19.6, shineDuration: 0.4 },
   };
+  const specialLayerAnimations: Partial<Record<keyof IntroductionLayers, { start: number; duration: number; scale: number; rise: number; light?: boolean }>> = {
+    logo: { start: 0.08, duration: 0.25, scale: 0.92, rise: 0, light: true },
+    questionsPanel: { start: 0.12, duration: 0.42, scale: 0.9, rise: 24, light: true },
+  };
+  const activeLayerEntries: [keyof IntroductionLayers, IntroductionLayer][] = specialSceneActive
+    ? [["logo", specialScene.logo], ["questionsPanel", specialScene.questionsPanel]]
+    : Object.entries(layers) as [keyof IntroductionLayers, IntroductionLayer][];
+  const activeLayerAnimations = specialSceneActive ? specialLayerAnimations : layerAnimations;
+  const activeBackground = specialSceneActive ? specialScene.background || background : background;
+  const activeBackgroundOpacity = specialSceneActive ? 1 : backgroundOpacity;
 
   return (
     <div style={{ position: "absolute", inset: 0, overflow: "hidden", opacity: compositionOpacity }}>
-      {background && <Img src={toPublicUrl(background)} style={{
+      {activeBackground && <Img src={toPublicUrl(activeBackground)} style={{
         position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain",
-        opacity: interpolate(backgroundOpacity, [0, 1], [0.8, 1]), transform: `scale(${backgroundZoom})`, transformOrigin: "center center",
+        opacity: interpolate(activeBackgroundOpacity, [0, 1], [0.8, 1]), transform: `scale(${backgroundZoom})`, transformOrigin: "center center",
       }} />}
-      {(Object.entries(layers) as [keyof IntroductionLayers, IntroductionLayers[keyof IntroductionLayers]][])
+      {activeLayerEntries
         .filter(([id, layer]) => Boolean(layer.image) && layer.visible && Boolean(layerAnimations[id]))
         .sort(([, left], [, right]) => left.zIndex - right.zIndex)
         .map(([id, layer]) => {
-          const animation = layerAnimations[id]!;
-          const stagger = id === "history" ? 0 : id === "geography" ? 0.7 : id === "science" ? 1.4 : id === "cinema" ? 2.1 : 0;
+          const animation = activeLayerAnimations[id]!;
+          const stagger = specialSceneActive ? 0 : id === "history" ? 0 : id === "geography" ? 0.7 : id === "science" ? 1.4 : id === "cinema" ? 2.1 : 0;
+          const sceneOffset = specialSceneActive ? specialScene.transition.startSeconds : 0;
           return <IntroductionLayerImage
             key={id}
             image={layer.image!}
             layer={layer}
-            startFrame={frames(animation.start + stagger)}
+            startFrame={frames(sceneOffset + animation.start + stagger)}
             enterFrames={frames(animation.duration)}
             scaleFrom={animation.scale}
             risePixels={animation.rise}
             lightOnEntry={animation.light}
-            shineStartFrame={animation.shine === undefined ? undefined : frames(animation.shine)}
+            shineStartFrame={animation.shine === undefined ? undefined : frames(sceneOffset + animation.shine)}
             shineFrames={frames(animation.shineDuration ?? 1)}
-            spinStartFrame={animation.spinAt === undefined ? undefined : frames(animation.spinAt)}
+            spinStartFrame={animation.spinAt === undefined ? undefined : frames(sceneOffset + animation.spinAt)}
             spinFrames={frames(animation.spinDuration ?? 1.6)}
           />;
         })}
+      {specialSceneActive && specialScene.transition.effect === "lightning" && <SpecialSceneLightningTransition frame={specialTransitionFrame} durationFrames={specialScene.transition.durationFrames} />}
     </div>
   );
 };
@@ -371,6 +394,10 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
   const frame = useCurrentFrame();
   const { fps, durationInFrames } = useVideoConfig();
   const introFrames = introductionDurationFrames(project);
+  const specialScene = project.introductionDelayedScene;
+  const specialSceneStartFrame = Math.round(specialScene.transition.startSeconds * fps);
+  const specialSceneHasAssets = Boolean(specialScene.background || specialScene.sound || specialScene.logo.image || specialScene.questionsPanel.image);
+  const specialSceneWillPlay = specialScene.transition.enabled && specialSceneHasAssets && specialSceneStartFrame < introFrames;
   const introductionVoiceStartFrame = Math.round(0.3 * fps);
   const hasFullQuiz = questionOffset === 0 && questions.length === project.questions.length;
   const outroFrames = hasFullQuiz ? conclusionDurationFrames(project) : 0;
@@ -457,6 +484,7 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
     <div style={{ width: 1920, height: 1080, overflow: "hidden", position: "relative", background: "#101b14", fontFamily: "Arial, sans-serif" }}>
       {project.backgroundMusic && <Sequence from={0} durationInFrames={durationInFrames} layout="none"><Audio src={toPublicUrl(project.backgroundMusic)} loop loopVolumeCurveBehavior="extend" volume={themeMusicVolumeAt} /></Sequence>}
       {project.introductionMusic && <Sequence from={0} durationInFrames={introductionMusicEndFrame} layout="none"><Audio src={toPublicUrl(project.introductionMusic)} volume={(audioFrame) => introductionMusicVolumeAt(audioFrame)} /></Sequence>}
+      {specialSceneWillPlay && specialScene.sound && <Sequence from={specialSceneStartFrame} durationInFrames={introFrames - specialSceneStartFrame} layout="none"><Audio src={toPublicUrl(specialScene.sound)} volume={1} /></Sequence>}
       {hasFullQuiz && outroFrames > 0 && project.conclusionMusic && <Sequence from={conclusionStartFrame} durationInFrames={outroFrames} layout="none"><Audio src={toPublicUrl(project.conclusionMusic)} loop volume={(audioFrame) => interpolate(audioFrame, [0, musicCrossfadeFrames], [0, project.conclusionMusicVolume / 100], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) })} /></Sequence>}
       {introductionNarration(project) && <Sequence from={introductionVoiceStartFrame} durationInFrames={Math.max(1, Math.ceil(introductionNarration(project)!.duration * fps))} layout="none"><Audio src={toPublicUrl(introductionNarration(project)!.path)} volume={project.voiceVolume / 100} /></Sequence>}
       {hasFullQuiz && conclusionNarration(project) && <Sequence from={conclusionStartFrame + conclusionVoiceDelayFrames} durationInFrames={Math.max(1, Math.ceil(conclusionNarration(project)!.duration * fps))} layout="none"><Audio src={toPublicUrl(conclusionNarration(project)!.path)} volume={project.voiceVolume / 100} /></Sequence>}
@@ -483,7 +511,7 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
       {isOpeningTheme
         ? <>
           <Backdrop image={project.background} opacity={frame >= introFrames - introFadeOutFrames ? 1 : 0} />
-          <IntroductionComposition background={project.introductionImage || project.background} layers={project.introductionLayers} durationFrames={introFrames} />
+          <IntroductionComposition background={project.introductionImage || project.background} layers={project.introductionLayers} specialScene={specialScene} durationFrames={introFrames} />
         </>
         : isConclusion ? null : <Backdrop image={project.background} />}
       {!isConclusion && hasQuestionStarted && localFrame < questionFrames && !question.isRiddle && <Illustration image={question.image} />}
