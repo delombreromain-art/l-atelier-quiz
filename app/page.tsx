@@ -88,11 +88,13 @@ export default function Home() {
   const [introductionMusicPreviewPlaying, setIntroductionMusicPreviewPlaying] = useState(false);
   const [conclusionMusicPreviewPlaying, setConclusionMusicPreviewPlaying] = useState(false);
   const [answerSoundPreviewPlaying, setAnswerSoundPreviewPlaying] = useState(false);
+  const [specialSceneSoundPreviewPlaying, setSpecialSceneSoundPreviewPlaying] = useState(false);
   const playerRef = useRef<PlayerRef>(null);
   const countdownAudioRef = useRef<HTMLAudioElement>(null);
   const introductionMusicAudioRef = useRef<HTMLAudioElement>(null);
   const conclusionMusicAudioRef = useRef<HTMLAudioElement>(null);
   const answerSoundAudioRef = useRef<HTMLAudioElement>(null);
+  const specialSceneSoundAudioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("id") || "principal";
@@ -144,6 +146,10 @@ export default function Home() {
   }, [project.answerSoundVolume]);
 
   useEffect(() => {
+    if (specialSceneSoundAudioRef.current) specialSceneSoundAudioRef.current.volume = project.introductionDelayedScene.transition.soundVolume / 100;
+  }, [project.introductionDelayedScene.transition.soundVolume]);
+
+  useEffect(() => {
     const audio = countdownAudioRef.current;
     audio?.pause();
     if (audio) audio.currentTime = 0;
@@ -170,6 +176,13 @@ export default function Home() {
     if (audio) audio.currentTime = 0;
     setAnswerSoundPreviewPlaying(false);
   }, [project.answerSound]);
+
+  useEffect(() => {
+    const audio = specialSceneSoundAudioRef.current;
+    audio?.pause();
+    if (audio) audio.currentTime = 0;
+    setSpecialSceneSoundPreviewPlaying(false);
+  }, [project.introductionDelayedScene.sound]);
 
   useEffect(() => {
     const id = renderStatus?.id;
@@ -383,6 +396,16 @@ export default function Home() {
     audio.currentTime = 0;
     try { await audio.play(); }
     catch { setFeedback("La musique d’introduction n’a pas pu être lue."); }
+  };
+
+  const previewSpecialSceneSound = async () => {
+    const audio = specialSceneSoundAudioRef.current;
+    if (!audio) return;
+    if (!audio.paused) { audio.pause(); audio.currentTime = 0; return; }
+    audio.volume = project.introductionDelayedScene.transition.soundVolume / 100;
+    audio.currentTime = 0;
+    try { await audio.play(); }
+    catch { setFeedback("Le son de la scène spéciale n’a pas pu être lu."); }
   };
 
   const updateIntroductionMusicVolume = (introductionMusicVolume: number) => {
@@ -639,7 +662,7 @@ export default function Home() {
                   />
                   <div className="music-field" id="son-scene-speciale">
                     <div className="music-heading"><div><strong>SON DE LA SCÈNE SPÉCIALE</strong><small>Joué au passage vers la scène spéciale.</small></div><label className="upload-button">{mediaBusy === "introduction-delayed-sound" ? "Import…" : project.introductionDelayedScene.sound ? "Remplacer le son" : "Ajouter un son"}<input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/wave,audio/x-wav,audio/mp4,audio/x-m4a,audio/aac,audio/ogg,audio/webm,.mp3,.wav,.m4a,.aac,.ogg,.webm" disabled={Boolean(mediaBusy)} onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void uploadDelayedSceneSound(file); event.currentTarget.value = ""; }} /></label>{project.introductionDelayedScene.sound && <button className="text-button" onClick={() => updateProject({ introductionDelayedScene: { ...project.introductionDelayedScene, sound: null } })}>Retirer</button>}</div>
-                    {project.introductionDelayedScene.sound && <audio className="intro-audio-preview" controls preload="metadata" src={assetUrl(project.introductionDelayedScene.sound) || undefined} aria-label="Écouter le son de la scène spéciale" />}
+                    {project.introductionDelayedScene.sound && <div className="conclusion-music-preview-row"><button type="button" className="countdown-preview-button" onClick={() => void previewSpecialSceneSound()}>{specialSceneSoundPreviewPlaying ? "■ Arrêter l’écoute" : "▶ Écouter le son"}</button><span>L’écoute et l’aperçu vidéo suivent la même jauge.</span><audio ref={specialSceneSoundAudioRef} className="countdown-audio-source" preload="metadata" src={assetUrl(project.introductionDelayedScene.sound) || undefined} onPlay={() => setSpecialSceneSoundPreviewPlaying(true)} onPause={() => setSpecialSceneSoundPreviewPlaying(false)} onEnded={() => setSpecialSceneSoundPreviewPlaying(false)} aria-label="Aperçu du son de la scène spéciale" /></div>}
                     <p>Il se déclenche lors du passage à la scène spéciale, à 8 secondes.</p>
                     {project.introductionDelayedScene.sound && <Slider label="Volume du son de transition" value={project.introductionDelayedScene.transition.soundVolume} min={0} max={100} unit=" %" onChange={(soundVolume) => updateProject({ introductionDelayedScene: { ...project.introductionDelayedScene, transition: { ...project.introductionDelayedScene.transition, soundVolume } } })} />}
                   </div>
@@ -714,7 +737,7 @@ export default function Home() {
             <div className="preview-column">
               <section className="panel preview-panel" id="preview">
                 <div className="panel-heading preview-heading"><div><span className="panel-step">06</span><div><h2>Prévisualisation</h2><p>La composition Remotion sera rendue en MP4.</p></div></div><span className="resolution-chip">16:9</span></div>
-                <div className="preview-frame">{loaded ? <Player key={`${previewKey}-${project.introductionDelayedScene.sound || "no-special-scene-sound"}-${project.introductionDelayedScene.transition.enabled}-${project.introductionDelayedScene.transition.startSeconds}-${project.introductionDelayedScene.transition.soundVolume}`} ref={playerRef} component={QuizVideo} inputProps={{ project: previewProject, questions: visibleQuestions, questionOffset }} durationInFrames={previewDuration} compositionWidth={1920} compositionHeight={1080} fps={30} controls clickToPlay loop={false} errorFallback={({ error }) => <div className="preview-error"><strong>Erreur de prévisualisation</strong><span>{error.message}</span></div>} style={{ width: "100%" }} /> : <div className="preview-loading">Ouverture du projet…</div>}</div>
+                <div className="preview-frame">{loaded ? <Player key={`${previewKey}-${project.introductionDelayedScene.sound || "no-special-scene-sound"}-${project.introductionDelayedScene.transition.enabled}-${project.introductionDelayedScene.transition.startSeconds}`} ref={playerRef} component={QuizVideo} inputProps={{ project: previewProject, questions: visibleQuestions, questionOffset }} durationInFrames={previewDuration} compositionWidth={1920} compositionHeight={1080} fps={30} controls clickToPlay loop={false} errorFallback={({ error }) => <div className="preview-error"><strong>Erreur de prévisualisation</strong><span>{error.message}</span></div>} style={{ width: "100%" }} /> : <div className="preview-loading">Ouverture du projet…</div>}</div>
                 <div className="preview-tools"><span>APERÇU</span><div className="preview-switches"><button className={previewQuestion === "all" ? "active" : ""} onClick={() => setPreviewQuestion("all")}>Tout le quiz</button>{activeQuestions.map((question, index) => <button className={previewQuestion === index ? "active" : ""} key={question.id} onClick={() => setPreviewQuestion(index)}>Q{index + 1}</button>)}</div>{conclusionDurationFrames(project) > 0 && <button type="button" className={`preview-conclusion-button${previewQuestion === "conclusion" ? " active" : ""}`} onClick={() => setPreviewQuestion("conclusion")}>Conclusion</button>}<span>{(previewDuration / 30).toFixed(0)} s</span></div>
                 <div className="timeline" aria-label="Timeline du quiz"><div className="timeline-intro"><span>INTRO</span><i>{(introductionDurationFrames(project) / FPS).toFixed(1)} s</i></div><div className="timeline-gap"><span>PAUSE</span><i>1 s</i></div>{activeQuestions.map((question, index) => <button key={question.id} className={`timeline-question ${previewQuestion === index ? "chosen" : ""}`} onClick={() => setPreviewQuestion(index)}>{question.startsTheme && <b title="Nouveau thème avant cette question">T ·</b>}<span>Q{index + 1}</span><i>{questionDurationFrames(question, project.voice, project.speechRate) / FPS} s</i><i>{answerDisplayFrames(question, project.voice, project.speechRate) / FPS} s</i>{index < activeQuestions.length - 1 && <i>{transitionFramesAfter(activeQuestions, index) / 30} s</i>}</button>)}{(previewQuestion === "all" || previewQuestion === "conclusion") && conclusionDurationFrames(project) > 0 && <button type="button" className={`timeline-conclusion${previewQuestion === "conclusion" ? " chosen" : ""}`} title="Prévisualiser la conclusion" onClick={() => setPreviewQuestion("conclusion")}><span>FIN</span><i>{(conclusionDurationFrames(project) / FPS).toFixed(1)} s</i></button>}</div>
               </section>
