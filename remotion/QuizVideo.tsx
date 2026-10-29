@@ -364,18 +364,16 @@ const resolveTheme = (project: QuizVideoProps["project"], questionIndex: number)
   return { title, image, background, logo };
 };
 
-const Timer: React.FC<{ frame: number; duration: number; displaySeconds?: boolean; transitionPulse?: number }> = ({ frame, duration, displaySeconds = true, transitionPulse = 0 }) => {
+const Timer: React.FC<{ frame: number; duration: number; displaySeconds?: boolean }> = ({ frame, duration, displaySeconds = true }) => {
   const seconds = Math.max(0, Math.ceil((duration - frame) / FPS));
   const progress = Math.min(1, Math.max(0, frame / duration));
   const sandTop = Math.max(0, 1 - progress);
   const sandBottom = Math.min(1, progress);
   const tickScale = interpolate(frame % FPS, [0, 4, 14], [1.12, 1.025, 1], { extrapolateRight: "clamp" });
   const urgencyScale = seconds <= 3 ? 1 + Math.sin((frame / FPS) * Math.PI * 2) * 0.025 : 1;
-  const transitionScale = 1 + Math.sin(Math.PI * transitionPulse) * 0.055;
-  const transitionGlow = Math.sin(Math.PI * transitionPulse) * 10;
   return (
-    <div style={{ position: "absolute", zIndex: 5, right: 58, bottom: 48, width: 190, height: 252, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", filter: `drop-shadow(0 8px 18px #0009) drop-shadow(0 0 ${transitionGlow}px #d1b36a88)` }}>
-      <svg width="156" height="194" viewBox="0 0 120 150" aria-label={displaySeconds ? `Il reste ${seconds} secondes` : "Sablier"} style={{ transform: transitionPulse ? `scale(${transitionScale})` : undefined }}>
+    <div style={{ position: "absolute", zIndex: 5, right: 58, bottom: 48, width: 190, height: 252, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", filter: "drop-shadow(0 8px 18px #0009)" }}>
+      <svg width="156" height="194" viewBox="0 0 120 150" aria-label={displaySeconds ? `Il reste ${seconds} secondes` : "Sablier"}>
         <defs>
           <clipPath id="hourglassTop"><path d="M34 22 C34 41 46 57 60 70 C74 57 86 41 86 22 Z" /></clipPath>
           <clipPath id="hourglassBottom"><path d="M60 74 C46 86 34 102 34 130 H86 C86 102 74 86 60 74 Z" /></clipPath>
@@ -475,10 +473,6 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
   const transitionStart = questionFrames + answerFrames;
   const isTransitioning = localFrame >= transitionStart && !isLast;
   const questionNumber = questionOffset + activeIndex + 1;
-  const isHourglassTransitionVariation = isTransitioning && Boolean(nextQuestion) && questionNumber % 8 === 0 && !nextQuestion?.startsTheme;
-  const transitionProgress = isTransitioning && nextQuestion
-    ? Math.min(1, (localFrame - transitionStart) / Math.max(1, transitionFramesAfter(questions, activeIndex)))
-    : 0;
   const nextTheme = nextQuestion ? resolveTheme(project, questionOffset + activeIndex + 1) : null;
   const isNewTheme = Boolean(isTransitioning && nextQuestion?.startsTheme);
 
@@ -525,7 +519,6 @@ export const QuizVideo: React.FC<QuizVideoProps> = ({ project, questions, questi
           ? <ThemeImageSequence image={nextTheme.image} frame={localFrame - transitionStart} duration={transitionFramesAfter(questions, activeIndex)} />
           : null
       )}
-      {!isConclusion && isHourglassTransitionVariation && <Timer frame={questionFrames} duration={questionFrames} displaySeconds={false} transitionPulse={transitionProgress} />}
       {!isOpeningTheme && !isConclusion && <Logo source={project.logo} layer={project.decorLogoLayer} />}
       {!isConclusion && hasQuestionStarted && <div style={{ position: "absolute", zIndex: 20, bottom: 72, left: 64, color: "#e4c574", fontSize: 34, fontWeight: 700, letterSpacing: 5, lineHeight: 1, textShadow: "0 2px 10px #000" }}>{String(questionNumber).padStart(2, "0")} / {String(project.questions.length).padStart(2, "0")}</div>}
       {outroFrames > 0 && frame >= conclusionStartFrame && <ConclusionComposition background={project.conclusionBackgroundImage} images={[{ source: project.conclusionImage, layer: project.conclusionLayer }, { source: project.conclusionImage2, layer: project.conclusionLayer2 }, { source: project.conclusionImage3, layer: project.conclusionLayer3 }]} frame={conclusionLocalFrame} durationFrames={outroFrames} opacity={interpolate(conclusionLocalFrame, [0, conclusionFadeFrames], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.sin) })} />}
